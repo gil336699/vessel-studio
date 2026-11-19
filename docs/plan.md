@@ -60,7 +60,7 @@ Written 2026-11-18 with the "Starting a new app" checklist in the App Developmen
 - [x] Vite, React, TypeScript (strict), Vitest and ESLint, with the standard scripts
 - [x] Folder layout, `.gitignore` and `local/`
 - [x] `base: './'` in `vite.config.ts`
-- [ ] Public GitHub repo with MIT license, README and CHANGELOG (Gil: publish after this round passes)
-- [ ] `ci.yml` and `pages.yml`, Pages turned on, homepage link set
+- [x] Public GitHub repo with MIT license, README and CHANGELOG: [gil336699/vessel-studio](https://github.com/gil336699/vessel-studio), published 2026-11-18 once the round passed, as Gil chose
+- [x] `ci.yml` and `pages.yml`, Pages turned on, homepage link set: https://gil336699.github.io/vessel-studio/
 - [x] CSS variables for colours, radii and sizes, light and dark, and the accessibility media queries
 - [x] Tooltip layer, modal, tabs, quick start and ? dialog from the start
