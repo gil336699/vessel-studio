@@ -37,7 +37,7 @@ export const GrowPanel = memo(function GrowPanel({ s, change, onPreset, onShuffl
     </Section>
 
     <Section title="Attractors" tip="Points veins grow toward. Each one is used up once a vein comes within the kill distance.">
-      <RangeField label="Count" value={s.count} min={LIMITS.count[0]} max={LIMITS.count[1]} step={1} digits={0} log
+      <RangeField label="Count" value={s.count} min={LIMITS.count[0]} max={LIMITS.count[1]} step={1} digits={0} log onRelease
         tip="How many attractors fill the shape. More gives denser veins and smoother branches." onChange={count => change({ count: Math.round(count) }, 'count')} />
       <Segmented label="Placement" options={placements(Boolean(picture))} value={s.placement} columns={3} onChange={placement => change({ placement }, 'placement')} />
       <div className="button-row one-line">

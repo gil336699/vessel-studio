@@ -49,7 +49,7 @@ export class Mirror {
 
   // New growth settings may let finished growth carry on, as the engine allows. True if it was finished.
   resume(): boolean {
-    if (!this.done || this.done === 'empty') return false
+    if (!this.done || this.done === 'empty' || this.done === 'reached') return false
     this.done = null
     return true
   }
@@ -135,8 +135,11 @@ export function useVeins(initial: () => { design: Design; saved: boolean }, setS
         runningRef.current = false
         setRunning(false); setStopping(false)
         waiters.current.splice(0).forEach(resolve => resolve())
-        // A stopped worker takes no more messages: a fresh one carries on from the veins the page has.
+        // A stopped worker takes no more messages: a fresh one carries on from the veins the page has drawn. The
+        // design's own copy is only brought up to date when growth stops, so it can be many steps behind.
         c?.dispose()
+        committed.current = { ...committed.current, growth: mirror.growth() }
+        setDesign(committed.current)
         failures++
         if (failures <= 2) {
           start()
@@ -221,8 +224,12 @@ export function useVeins(initial: () => { design: Design; saved: boolean }, setS
       setDesign(committed.current)
       if (GROWTH_KEYS.some(k => next.settings[k] !== cur.settings[k])) {
         client.current?.params(growthParams(next.settings))
-        // New growth settings may let finished growth carry on, as the engine allows.
-        if (mirror.resume()) show()
+        // New growth settings may let finished growth carry on, as the engine allows: from where the veins are,
+        // not from the roots.
+        if (mirror.resume()) {
+          show()
+          if (!opts.quiet) statusRef.current({ text: 'Growth carries on from here with the new setting. Reset to grow again from the roots with it.' })
+        }
       }
       if (next.settings.speed !== cur.settings.speed) client.current?.speed(next.settings.speed)
     }
@@ -316,7 +323,8 @@ export function useVeins(initial: () => { design: Design; saved: boolean }, setS
     load(next)
   }, [current, remember, commit, load])
 
-  const setRoots = useCallback(async (roots: Vec[], key: string | null = null) => {
+  // message: what to say instead of the usual note, which only comes once veins have grown.
+  const setRoots = useCallback(async (roots: Vec[], key: string | null = null, message?: string) => {
     await halt()
     const cur = current()
     remember(cur, key)
@@ -324,7 +332,8 @@ export function useVeins(initial: () => { design: Design; saved: boolean }, setS
     commit(next)
     load(next)
     setUnsaved(true)
-    if (hasGrown(cur)) statusRef.current({ text: 'The veins started again from the new roots. Undo brings them back.' })
+    if (message) statusRef.current({ text: message })
+    else if (hasGrown(cur)) statusRef.current({ text: 'The veins started again from the new roots. Undo brings them back.' })
   }, [halt, current, remember, commit, load])
 
   const markSaved = useCallback(() => setUnsaved(false), [])

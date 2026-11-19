@@ -1,5 +1,25 @@
 # Vessel Studio Changelog
 
+## 1.3.0 2026-11-19
+
+QA round 2 of 3: the same four reviews, on 1.2.0, checking round 1's fixes and looking for what it missed.
+
+- **Every part grows with every preset.** Arterial, Neural and Capillary start veins at the centre of each part of a word or logo; they gave the whole drawing one root, so most letters didn't grow. Base and Centre do the same, a drawing of up to 500 parts gets a root in each (it was 48), and a stalled design in parts says how to root the rest.
+- **Sheet presets keep roots in place.** A new sheet size moved an imported drawing's roots differently from its outline, leaving letters without one.
+- **Art past the page is trimmed to the sheet,** as for a bleed; veins grew off the sheet.
+- **Files with no size** can be read again at Illustrator's 72 points per inch with one click on the Shape tab.
+- **Grown veins are safe from a stray touch or drag.** Moving or removing a root after growth asks first, like Reset.
+- **A preset keeps Picture placement,** and choosing a row or ring of roots turns Leaf growth off, saying why, so every root grows.
+- **Measurements show the widest vein,** as Max width only caps it.
+- **Fixes**
+  - A root clicked near a corner stays by the corner; it could jump to the middle of an edge.
+  - A restarted growth worker carries on from the veins shown; it could freeze.
+  - Space after closing a dialog, or after clicking a switch's label, grows instead of pressing the control again.
+  - On a touch screen, tapping a greyed-out control shows why beside it, as the status line can be off a phone's screen.
+  - Long warnings keep their advice, the status isn't read out many times a second while growing, and several labels, contrasts and touch targets are better.
+  - SVG symbols, nested pages and switches draw as in a browser, and a file of copies of copies is refused before it fills memory.
+  - Dragging the Count slider places attractors once, when let go, and the shape is rebuilt only when it changes.
+
 ## 1.2.0 2026-11-19
 
 The first of three QA rounds: a user test, a developer test, a UI/UX test and real jobs for designers, with every problem they found fixed.

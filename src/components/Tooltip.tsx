@@ -90,6 +90,17 @@ export function TooltipLayer() {
     }
     const onBlur = () => { if (anchor && mode === 'focus') hide() }
     const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') hide() }
+    // A touch screen shows no tooltips on hover, so a tap on a control that can't be used yet shows why, beside it,
+    // for a few seconds; the status line can be off the screen on a phone.
+    const onTap = (event: PointerEvent) => {
+      if (event.pointerType !== 'touch' || !(event.target instanceof Element)) return
+      const off = event.target.closest<HTMLElement>('[aria-disabled="true"][data-tip]')
+        ?? event.target.closest<HTMLElement>('[data-tip]:has([aria-disabled="true"], :disabled)')
+      if (!off) return
+      hide()
+      show(off, off, 'focus')
+      timer = window.setTimeout(hide, 4000)
+    }
     // Focusing a control can scroll its panel: a tooltip opened by focus moves with it, until it scrolls out of view.
     const onScroll = () => {
       if (anchor && mode === 'focus' && anchor.isConnected) {
@@ -99,6 +110,7 @@ export function TooltipLayer() {
       hide()
     }
 
+    document.addEventListener('pointerup', onTap, true)
     document.addEventListener('pointerover', onOver)
     document.addEventListener('pointerout', onOut)
     document.addEventListener('pointerdown', hide, true)
@@ -110,6 +122,7 @@ export function TooltipLayer() {
     window.addEventListener('resize', hide)
     return () => {
       hide()
+      document.removeEventListener('pointerup', onTap, true)
       document.removeEventListener('pointerover', onOver)
       document.removeEventListener('pointerout', onOut)
       document.removeEventListener('pointerdown', hide, true)

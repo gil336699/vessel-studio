@@ -4,7 +4,7 @@ import { placeAttractors } from '../veins/attractors'
 import { Engine } from '../veins/engine'
 import { pointInRing, rectRing, signedArea, type Ring } from '../veins/geometry'
 import { Region } from '../veins/region'
-import { freshDesign, regionOf, startRoots, type Imported } from './design'
+import { freshDesign, planChange, regionOf, startRoots, type Imported } from './design'
 import { shapeFromDrawing } from './importShape'
 import { applyPreset, DEFAULTS, growthParams, type Settings } from './settings'
 import { readSvgDrawing } from './svgImport'
@@ -43,12 +43,50 @@ describe('roots in every part of a shape', () => {
     }
   })
 
+  it('roots every letter with presets that start veins at the centre, and after a sheet preset', () => {
+    const im = imported('illustrator-word.svg')
+    // Arterial, Neural and Capillary start veins at the centre: of each part, for a word.
+    for (const preset of ['arterial', 'neural', 'capillary'] as const) {
+      const s = applyPreset({ ...DEFAULTS, width: im.width, height: im.height, shape: 'imported' }, preset)
+      const region = regionOf(s, im)
+      const roots = startRoots(s, region, 'centre')
+      const smallestFirst = [...region.parts()].sort((a, b) => Math.abs(signedArea(a)) - Math.abs(signedArea(b)))
+      expect(new Set(roots.map(([x, y]) => smallestFirst.findIndex(r => pointInRing(r, x, y)))).size).toBe(6)
+    }
+    // A square sheet for a long word: the outline is fitted and centred, and its roots move with it.
+    const s = onSheet(im)
+    const d = freshDesign(s, im, null)
+    const next = planChange(d, { width: 200, height: 200 }, im, null).next
+    const region = regionOf(next.settings, im)
+    const smallestFirst = [...region.parts()].sort((a, b) => Math.abs(signedArea(a)) - Math.abs(signedArea(b)))
+    const owners = new Set(next.roots.map(([x, y]) => smallestFirst.findIndex(r => pointInRing(r, x, y))))
+    expect(owners.has(-1)).toBe(false)
+    expect(owners.size).toBe(6)
+  })
+
+  it('roots every part of a drawing with many, such as a page of small letters', () => {
+    // 90 small squares in a grid on a 300 × 200 mm sheet.
+    const rings: Ring[] = []
+    for (let i = 0; i < 15; i++) for (let j = 0; j < 6; j++) rings.push(rectRing(10 + i * 19, 10 + j * 30, 22 + i * 19, 30 + j * 30))
+    const im: Imported = { name: 'grid.svg', sized: 'file', width: 300, height: 200, rings }
+    const s = onSheet(im)
+    expect(startRoots(s, regionOf(s, im))).toHaveLength(90)
+  })
+
   it('gives a root even to a part too small to count as an area of its own, such as the dot of an i', () => {
     // A 280 × 200 mm panel and a 3 mm square dot well away from it, on a 300 × 220 mm sheet.
     const im: Imported = { name: 'dot.svg', sized: 'file', width: 300, height: 220, rings: [rectRing(10, 10, 290, 210), [[150, 212], [153, 212], [153, 215], [150, 215]]] }
     const s = onSheet(im)
     const roots = startRoots(s, regionOf(s, im))
     expect(roots.some(([x, y]) => x > 150 && x < 153 && y > 212 && y < 215)).toBe(true)
+  })
+
+  it('puts a root clicked just outside a corner next to that corner, not halfway along an edge', () => {
+    // The Rectangle shape on A4 with a 12 mm margin; a click 4 mm outside its top-left corner.
+    const region = new Region([rectRing(12, 12, 198, 285)])
+    const p = region.nearestInside(8, 8, 0.5)!
+    expect(region.contains(p[0], p[1])).toBe(true)
+    expect(Math.hypot(p[0] - 12, p[1] - 12)).toBeLessThan(3)
   })
 
   it('finds a point inside from a baseline between two letters', () => {

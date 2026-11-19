@@ -2,8 +2,9 @@
 // outlined strokes read as lines, on a page brought within the sheet's size limits by one even scale, so the
 // outline is never stretched. What was done is said in plain words: notes for what was meant, warnings for what
 // to check.
-import type { Ring, Vec } from '../veins/geometry'
-import { mergeStrokeBands } from '../veins/strokes'
+import { signedArea, type Ring, type Vec } from '../veins/geometry'
+import { Region } from '../veins/region'
+import { mergeStrokeBands, outlinesCross } from '../veins/strokes'
 import type { Imported } from './design'
 import { FAR } from './project'
 import { LIMITS } from './settings'
@@ -11,6 +12,13 @@ import type { SvgDrawing } from './svgImport'
 import { formatLength, type Units } from './units'
 
 export type ImportedShape = { imported: Imported; units: Units; notes: string[]; warnings: string[] }
+
+// A file that doesn't say its size is read at 96 per inch, the web's; one from Illustrator is at 72. Read again at
+// 72, it's 96 / 72 times the size, as Illustrator drew it.
+export function atIllustratorSize(imported: Imported): Imported {
+  const k = 96 / 72
+  return { ...imported, sized: 'illustrator', width: imported.width * k, height: imported.height * k, rings: imported.rings.map(r => r.map(([x, y]): Vec => [x * k, y * k])) }
+}
 
 export function shapeFromDrawing(drawing: SvgDrawing, name: string, units: Units, dpi: number): ImportedShape | { error: string } {
   const closed = drawing.paths.filter(p => p.closed && p.points.length >= 3)
@@ -29,6 +37,11 @@ export function shapeFromDrawing(drawing: SvgDrawing, name: string, units: Units
   const kept = rings.filter(r => r.every(([x, y]) => Math.abs(x) <= FAR && Math.abs(y) <= FAR))
   if (!kept.length) return { error: `Every closed shape in ${name} lies more than 100 m off its page, so none can be used.` }
   const strokes = mergeStrokeBands(kept)
+  // Outlines that make a frame: veins grow in the band, as the file draws it, which may not be what's meant.
+  const region = new Region(strokes.rings)
+  const outers = strokes.rings.filter((_, i) => region.depths[i] % 2 === 0), holes = strokes.rings.filter((_, i) => region.depths[i] % 2 === 1)
+  const biggest = Math.max(0, ...outers.map(r => Math.abs(signedArea(r)))), opening = Math.max(0, ...holes.map(r => Math.abs(signedArea(r))))
+  const frame = biggest > 0 && opening > 0.5 * biggest
   const shown: Units = drawing.units === 'illustrator' ? 'pt' : units
   const band = formatLength(strokes.width, shown, dpi, true)
   // Reading outlined strokes as lines is what was meant, so it's said plainly, not as a warning.
@@ -37,15 +50,20 @@ export function shapeFromDrawing(drawing: SvgDrawing, name: string, units: Units
   const notes = [
     strokes.pairs === 1 ? `Two of its outlines run ${band} apart all the way round, as an outlined stroke does, so they were read as one line. Veins grow up to it, never into it; Edge clearance keeps them further off.` : '',
     strokes.pairs > 1 ? `${strokes.pairs} pairs of its outlines run ${band} apart all the way round, as outlined strokes do, so each pair was read as one line. Veins grow up to them, never into them; Edge clearance keeps them further off.` : '',
+    frame ? 'Its outlines make a frame, so veins grow in the band round the opening, as drawn. To grow in the opening, import its outline alone.' : '',
   ].filter(Boolean)
+  const crossing = outlinesCross(strokes.rings)
   const open = drawing.paths.length - closed.length, far = rings.length - kept.length
+  const offPage = kept.some(r => r.some(([x, y]) => x < -1e-6 || y < -1e-6 || x > sheetW + 1e-6 || y > sheetH + 1e-6))
   const warnings = [
     drawing.fromClip ? `${name} is a picture, so the outline of its clipping mask is the shape.` : '',
     drawing.texts ? `Its live type was left out, as it has no outlines: in Illustrator, use Type › Create Outlines first.` : '',
     drawing.clipped ? `${drawing.clipped === 1 ? 'A clipping mask trims part' : `${drawing.clipped} clipping masks trim parts`} of the drawing; this reads shapes whole, so check the outline.` : '',
     open ? `${open} open ${open === 1 ? 'path was' : 'paths were'} left out: only closed shapes count.` : '',
+    crossing ? 'Some of its outlines cross, and where they overlap is read as a hole. To fill the overlap, join them first in Illustrator with Pathfinder › Unite.' : '',
     far ? `${far} ${far === 1 ? 'shape lies' : 'shapes lie'} more than 100 m off the page and ${far === 1 ? 'was' : 'were'} left out.` : '',
     k !== 1 ? `The drawing was scaled to ${Math.round(k * 100)} % to fit the sheet limits.` : '',
+    offPage ? 'Part of the drawing runs past its page, as a bleed does; veins grow only in what’s on the sheet.' : '',
     dx > 1e-9 || dy > 1e-9 ? `It’s too long and thin for any sheet, so the sheet is ${formatLength(dx > dy ? sheetW : sheetH, shown, dpi)} across its short side, with the drawing centred on it.` : '',
     drawing.units === 'css' ? 'The file doesn’t say its size, so it was read at 96 pixels per inch; check the width and height.' : '',
   ].filter(Boolean)

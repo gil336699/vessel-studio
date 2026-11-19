@@ -309,14 +309,17 @@ export class Region {
     }
     const first = stepIn(best.i, best.x, best.y)
     if (first) return first
-    // From the nearest point of the nearest edge that can fail, as at a corner, or on a line of text's baseline
-    // between two letters. Then the next nearest edges, from their nearest points and their middles.
-    const near = Array.from({ length: this.edgeCount }, (_, i) => i)
-      .map(i => ({ i, s: toSegment(x, y, this.ex0[i], this.ey0[i], this.ex1[i], this.ey1[i]) }))
-      .sort((a, b) => a.s.d - b.s.d).slice(0, 32)
-    for (const { i, s } of near) {
-      const p = stepIn(i, s.x, s.y) ?? stepIn(i, (this.ex0[i] + this.ex1[i]) / 2, (this.ey0[i] + this.ey1[i]) / 2)
-      if (p) return p
+    // Stepping in from the nearest edge can fail, as at a corner or on a line of text's baseline between two
+    // letters: then look outward from the point itself, in rings a quarter wider each time, for the nearest point
+    // inside and clear of the edges. Points on a ring are about an inset apart, up to 256 of them.
+    const [bx0, by0, bx1, by1] = this.box
+    const far = Math.max(Math.hypot(x - bx0, y - by0), Math.hypot(x - bx1, y - by0), Math.hypot(x - bx0, y - by1), Math.hypot(x - bx1, y - by1))
+    for (let r = inset; r <= far + inset; r *= 1.25) {
+      const n = Math.max(16, Math.min(256, Math.ceil((2 * Math.PI * r) / inset)))
+      for (let k = 0; k < n; k++) {
+        const a = (k / n) * 2 * Math.PI, px = x + r * Math.cos(a), py = y + r * Math.sin(a)
+        if (ok(px, py)) return [px, py]
+      }
     }
     return null
   }

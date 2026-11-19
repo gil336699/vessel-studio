@@ -51,9 +51,10 @@ export function SliderField({ label, value, min, max, step = 1, onChange, format
   const toTrack = (v: number) => (log ? Math.log(v) : v)
   const fromTrack = (t: number) => (log ? Math.exp(t) : t)
   const snap = (v: number) => Math.min(max, Math.max(min, Math.round(v / step) * step))
+  const id = useId()
   return <label className="field" data-tip={unavailable || tip}>
-    <span className="field-label"><span>{label}</span><b>{format ? format(value) : value}</b></span>
-    <input type="range" min={toTrack(min)} max={toTrack(max)} step={log ? 'any' : step} value={toTrack(value)} disabled={Boolean(unavailable)}
+    <span className="field-label"><span id={id}>{label}</span><b aria-hidden="true">{format ? format(value) : value}</b></span>
+    <input type="range" min={toTrack(min)} max={toTrack(max)} step={log ? 'any' : step} value={toTrack(value)} disabled={Boolean(unavailable)} aria-labelledby={id}
       style={rangeFill(toTrack(value), toTrack(min), toTrack(max))} aria-valuetext={format ? format(value) : String(value)}
       onChange={event => onChange(snap(fromTrack(Number(event.currentTarget.value))))} />
   </label>
@@ -81,9 +82,11 @@ export function DraftNumber({ value, min, max, step = 1, digits = 0, onChange, d
     }
     setDraft(null)
   }
-  return <input className={className} type="number" inputMode="decimal" min={min} max={max} step={step} value={shown} disabled={disabled}
-    aria-labelledby={labelledBy} aria-label={label}
+  // An unavailable box is read-only rather than disabled, so it can still take focus and a tap, and say why.
+  return <input className={className} type="number" inputMode="decimal" min={min} max={max} step={step} value={shown}
+    readOnly={disabled} aria-disabled={disabled || undefined} aria-labelledby={labelledBy} aria-label={label}
     onChange={event => {
+      if (disabled) return
       const text = event.currentTarget.value
       // A spin button or an arrow key changes the value without typing: apply it straight away.
       const typed = Boolean((event.nativeEvent as InputEvent).inputType)
@@ -91,8 +94,8 @@ export function DraftNumber({ value, min, max, step = 1, digits = 0, onChange, d
       if (!typed && text.trim() !== '' && Number.isFinite(v)) { setDraft(null); onChange(Math.min(max, Math.max(min, v))); return }
       setDraft({ text, at: value })
     }}
-    onBlur={commit}
-    onKeyDown={event => { if (event.key === 'Enter') commit() }} />
+    onBlur={() => { if (!disabled) commit() }}
+    onKeyDown={event => { if (event.key === 'Enter' && !disabled) commit() }} />
 }
 
 export function NumberField({ label, value, min, max, step = 1, digits = 0, suffix, onChange, tip, unavailable, compact }: Tip & {
@@ -142,28 +145,35 @@ export function Section({ title, children, tip, folded }: { title: string; child
 
 // A slider with a number box beside it, as the Illustrator panel paired them. The box takes typed values
 // in the display unit; `scale` converts stored values to it (for example millimetres to points).
-export function RangeField({ label, value, min, max, step, digits, scale = 1, suffix, onChange, tip, unavailable, log }: Tip & {
+// onRelease: the slider applies its value when let go, not at every step of a drag, for settings that are slow
+// to apply, such as Count, which places every attractor again. The number shows the value as it moves.
+export function RangeField({ label, value, min, max, step, digits, scale = 1, suffix, onChange, tip, unavailable, log, onRelease }: Tip & {
   label: string; value: number; min: number; max: number; step: number; digits: number; scale?: number; suffix?: string
-  onChange: (value: number) => void; log?: boolean
+  onChange: (value: number) => void; log?: boolean; onRelease?: boolean
 }) {
   const id = useId()
+  const [moving, setMoving] = useState<number | null>(null)
+  const release = () => { if (moving !== null) { onChange(moving); setMoving(null) } }
+  const shown = moving ?? value
   const toTrack = (v: number) => (log ? Math.log(v) : v)
   const fromTrack = (t: number) => (log ? Math.exp(t) : t)
   const round = (v: number) => Math.min(max, Math.max(min, v))
   return <div className="field range-field" data-tip={unavailable || tip}>
     <span className="field-label"><span id={id}>{label}</span>
       <span className="number-wrap">
-        <DraftNumber value={value * scale} min={min * scale} max={max * scale} step={step * scale} digits={digits} labelledBy={id}
+        <DraftNumber value={shown * scale} min={min * scale} max={max * scale} step={step * scale} digits={digits} labelledBy={id}
           disabled={Boolean(unavailable)} className="number-input inline-number" onChange={v => onChange(round(v / scale))} />
         {suffix && <span className="suffix" aria-hidden="true">{suffix}</span>}
       </span>
     </span>
-    <input type="range" min={toTrack(min)} max={toTrack(max)} step={log ? 'any' : step} value={toTrack(Math.min(max, Math.max(min, value)))}
-      disabled={Boolean(unavailable)} aria-labelledby={id} style={rangeFill(toTrack(Math.min(max, Math.max(min, value))), toTrack(min), toTrack(max))}
+    <input type="range" min={toTrack(min)} max={toTrack(max)} step={log ? 'any' : step} value={toTrack(Math.min(max, Math.max(min, shown)))}
+      disabled={Boolean(unavailable)} aria-labelledby={id} style={rangeFill(toTrack(Math.min(max, Math.max(min, shown))), toTrack(min), toTrack(max))}
       onChange={event => {
         const raw = fromTrack(Number(event.currentTarget.value))
-        const snapped = log ? raw : Math.round(raw / step) * step
-        onChange(round(snapped))
-      }} />
+        const snapped = round(log ? raw : Math.round(raw / step) * step)
+        if (onRelease) setMoving(snapped)
+        else onChange(snapped)
+      }}
+      onPointerUp={release} onKeyUp={release} onBlur={release} />
   </div>
 }

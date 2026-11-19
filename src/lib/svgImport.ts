@@ -364,9 +364,16 @@ function elementsById(body: string): Map<string, string> {
 // use's width and height as well. Copies are written out where they're used, three deep at most, before the
 // file is read, so a hole or a part drawn as a copy counts like any other.
 const USE = /<(?:svg:)?use\b([^>]*?)\/?>(?:\s*<\/(?:svg:)?use\s*>)?/gi
+const MAX_EXPANDED = 32_000_000
 function expandUses(body: string): string {
+  // The root's viewport in user units: its viewBox, or its width and height.
+  const root = attributesOf(/<(?:svg:)?svg\b([^>]*)>/i.exec(body)?.[1] ?? '')
+  const rootBox = numbers(root.viewbox ?? '')
+  const viewport: [number, number] = rootBox.length === 4 ? [rootBox[2], rootBox[3]] : [userLength(root.width, 0), userLength(root.height, 0)]
   for (let depth = 0; depth < 3 && /<(?:svg:)?use\b/i.test(body); depth++) {
     const byId = elementsById(body)
+    // Copies are counted as they're made, so a file that copies its copies is refused before it fills memory.
+    let made = body.length
     body = body.replace(USE, (_all, rest: string) => {
       const a = attributesOf(rest)
       const href = (a.href ?? a['xlink:href'] ?? '').trim()
@@ -377,20 +384,27 @@ function expandUses(body: string): string {
       const own = attributesOf(start[2])
       let fit = ''
       if (start[1].toLowerCase().replace(/^svg:/, '') === 'symbol') {
-        const vb = numbers(own.viewbox ?? ''), w = userLength(a.width, NaN), h = userLength(a.height, NaN)
-        if (vb.length === 4 && vb[2] > 0 && vb[3] > 0 && w > 0 && h > 0) {
-          const k = Math.min(w / vb[2], h / vb[3])
-          fit = ` matrix(${k} 0 0 ${k} ${(w - vb[2] * k) / 2 - vb[0] * k} ${(h - vb[3] * k) / 2 - vb[1] * k})`
-        }
+        // A use without a width or height fills the viewport, 100 % as browsers have it.
+        const vb = numbers(own.viewbox ?? ''), w = userLength(a.width, viewport[0]), h = userLength(a.height, viewport[1])
+        if (vb.length === 4 && vb[2] > 0 && vb[3] > 0 && w > 0 && h > 0) fit = ` matrix(${viewBoxFit(vb, w, h, own.preserveaspectratio).join(' ')})`
       }
       // The copy loses its id, so it isn't copied again, and a symbol becomes a group that's drawn.
       const copy = target.replace(/^<(?:svg:)?symbol\b/i, '<g').replace(/<\/(?:svg:)?symbol\s*>$/i, '</g>').replace(/^(<[^>]*?)\sid\s*=\s*("[^"]*"|'[^']*')/, '$1')
       const keep = ['style', 'class', 'display', 'clip-path'].filter(k => a[k] !== undefined).map(k => ` ${k}="${a[k].replace(/"/g, '&quot;')}"`).join('')
+      made += copy.length
+      if (made > MAX_EXPANDED) throw new SvgShapeError(TOO_DETAILED)
       return `<g transform="${a.transform ?? ''} translate(${at0(userLength(a.x))} ${at0(userLength(a.y))})${fit}"${keep}>${copy}</g>`
     })
-    if (body.length > 64_000_000) throw new SvgShapeError(TOO_DETAILED)
   }
   return body
+}
+
+// The transform that puts a viewBox into a box w × h: evenly and centred, as preserveAspectRatio's default
+// "xMidYMid meet" has it, or stretched to fill with "none".
+function viewBoxFit(vb: number[], w: number, h: number, aspect: string | undefined): Matrix {
+  if (aspect?.trim().toLowerCase().startsWith('none')) return [w / vb[2], 0, 0, h / vb[3], -vb[0] * (w / vb[2]), -vb[1] * (h / vb[3])]
+  const k = Math.min(w / vb[2], h / vb[3])
+  return [k, 0, 0, k, (w - vb[2] * k) / 2 - vb[0] * k, (h - vb[3] * k) / 2 - vb[1] * k]
 }
 
 // Every path in a file, in millimetres from the page's top-left corner. tolerance: how far flattened curves
@@ -400,6 +414,8 @@ export function readSvgDrawing(text: string, tolerance = 0.02): SvgDrawing {
   // Illustrator's Save As writes a generator comment. Its Export As writes none, and data-name only for a layer whose
   // name has a space ("Layer 1"), but it always styles shapes with classes named cls-1, cls-2 and so on.
   const illustrator = /Adobe Illustrator/i.test(text) || /data-name\s*=/.test(text) || /\bclass\s*=\s*["'](?:[^"']*\s)?cls-\d+\b/.test(text)
+  // Vessel Studio's own SVG: its attractor and root dots are markers, not outlines, so reading it back skips them.
+  const ownExport = /<title>\s*Vessel Studio\s*<\/title>/.test(text)
   const body = expandUses(text.replace(/<!--[\s\S]*?-->/g, '').replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, '').replace(/<\?[\s\S]*?\?>/g, '').replace(/<!DOCTYPE[\s\S]*?>/gi, ''))
 
   const paths: SvgPath[] = []
@@ -434,10 +450,11 @@ export function readSvgDrawing(text: string, tolerance = 0.02): SvgDrawing {
     // Capabilities" puts its own data in a <foreignObject> first, and the artwork after it.
     let unchosen = false
     if (parent?.name === 'switch' && !parent.skip) {
-      if (!parent.chose && name !== 'foreignobject' && a.requiredextensions === undefined && !isHidden(a)) parent.chose = true
+      if (!parent.chose && name !== 'foreignobject' && a.requiredextensions === undefined) parent.chose = true
       else unchosen = true
     }
-    const skip = Boolean(parent?.skip) || unchosen || SKIP.has(name) || isHidden(a)
+    const markers = ownExport && name === 'g' && (a.id === 'attractors' || a.id === 'roots')
+    const skip = Boolean(parent?.skip) || unchosen || markers || SKIP.has(name) || isHidden(a)
     let clip: string | null = null
     if (name === 'clippath') {
       // objectBoundingBox clips are sized to whatever uses them, so they give no outline of their own.
@@ -468,7 +485,10 @@ export function readSvgDrawing(text: string, tolerance = 0.02): SvgDrawing {
         pageH = h !== null && !px(unitOf(a.height)) ? h : (ph || 0) * rootScale
       }
     } else if (name === 'svg') {
-      m = multiply(m, [1, 0, 0, 1, Number(a.x ?? 0) || 0, Number(a.y ?? 0) || 0])
+      m = multiply(m, [1, 0, 0, 1, at0(userLength(a.x)), at0(userLength(a.y))])
+      // A nested viewBox is fitted to the nested size, as a symbol is.
+      const vb = numbers(a.viewbox ?? ''), w = userLength(a.width, NaN), h = userLength(a.height, NaN)
+      if (vb.length === 4 && vb[2] > 0 && vb[3] > 0 && w > 0 && h > 0) m = multiply(m, viewBoxFit(vb, w, h, a.preserveaspectratio))
     }
     if (a.transform) m = multiply(m, parseTransform(a.transform))
     if (name === 'svg' && !parent) rootM = m

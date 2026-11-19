@@ -69,6 +69,31 @@ function band(a: Ring, b: Ring): { typical: number; most: number } {
 const boxGap = (a: Box, b: Box) => Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Math.abs(a[2] - b[2]), Math.abs(a[3] - b[3]))
 const boxWithin = (b: Box, a: Box, slack: number) => b[0] >= a[0] - slack && b[1] >= a[1] - slack && b[2] <= a[2] + slack && b[3] <= a[3] + slack
 
+// Whether any two outlines cross each other (not just touch, as tiles sharing a side do). Read even-odd, the part
+// two crossing outlines share is a hole, which a drawing of separate overlapping shapes doesn't mean. Gives up,
+// saying no, after a few million edge tests on a very detailed drawing.
+export function outlinesCross(rings: Ring[]): boolean {
+  const boxes = rings.map(r => boxOf([r]))
+  const side = (ax: number, ay: number, bx: number, by: number, px: number, py: number) => (bx - ax) * (py - ay) - (by - ay) * (px - ax)
+  let budget = 4_000_000
+  for (let i = 0; i < rings.length; i++) for (let j = i + 1; j < rings.length; j++) {
+    if (!boxesOverlap(boxes[i], boxes[j])) continue
+    const a = rings[i], b = rings[j]
+    for (let p = 0; p < a.length; p++) {
+      const [ax, ay] = a[p], [bx, by] = a[(p + 1) % a.length]
+      const ex0 = Math.min(ax, bx), ex1 = Math.max(ax, bx), ey0 = Math.min(ay, by), ey1 = Math.max(ay, by)
+      if (ex1 < boxes[j][0] || ex0 > boxes[j][2] || ey1 < boxes[j][1] || ey0 > boxes[j][3]) continue
+      for (let q = 0; q < b.length; q++) {
+        if (--budget < 0) return false
+        const [cx, cy] = b[q], [dx, dy] = b[(q + 1) % b.length]
+        if (Math.max(cx, dx) < ex0 || Math.min(cx, dx) > ex1 || Math.max(cy, dy) < ey0 || Math.min(cy, dy) > ey1) continue
+        if (side(ax, ay, bx, by, cx, cy) * side(ax, ay, bx, by, dx, dy) < 0 && side(cx, cy, dx, dy, ax, ay) * side(cx, cy, dx, dy, bx, by) < 0) return true
+      }
+    }
+  }
+  return false
+}
+
 export function mergeStrokeBands(rings: Ring[]): Merged {
   const n = rings.length
   const area = rings.map(r => Math.abs(signedArea(r)))

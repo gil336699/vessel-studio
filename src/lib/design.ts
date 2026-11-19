@@ -1,7 +1,7 @@
 // A design: the settings, the shape (a preset or an imported outline), the roots and the attractors, plus the
 // growth so far. Everything here is plain data, so it can go into a project file, the worker and undo.
 import { placeAttractors, type DensityMap } from '../veins/attractors'
-import { boxOf, pointInRing } from '../veins/geometry'
+import { boxOf, clipRingToBox, pointInRing, signedArea, type Box } from '../veins/geometry'
 import type { EngineState } from '../veins/engine'
 import type { Ring, Vec } from '../veins/geometry'
 import { Rng } from '../veins/random'
@@ -48,11 +48,20 @@ export function engineState(g: Growth): EngineState {
 export function shapeRings(s: Settings, imported: Imported | null): Ring[] {
   let rings: Ring[]
   if (s.shape === 'imported') {
-    const k = imported ? Math.min(s.width / imported.width, s.height / imported.height) : 1
-    const dx = imported ? (s.width - imported.width * k) / 2 : 0, dy = imported ? (s.height - imported.height * k) / 2 : 0
-    rings = (imported?.rings ?? []).map(ring => (k === 1 && dx === 0 && dy === 0 ? ring : ring.map(([x, y]): Vec => [x * k + dx, y * k + dy])))
+    const { k, dx, dy } = importedFit(s, imported)
+    // Only what's on the sheet: a drawing that runs past its page, as with a bleed, is trimmed to the sheet.
+    const sheet: Box = [0, 0, s.width, s.height]
+    rings = (imported?.rings ?? []).map(ring => clipRingToBox(k === 1 && dx === 0 && dy === 0 ? ring : ring.map(([x, y]): Vec => [x * k + dx, y * k + dy]), sheet))
+      .filter(ring => ring.length >= 3 && Math.abs(signedArea(ring)) > 1e-9)
   } else rings = presetRings(s.shape, s.width, s.height, s.margin)
   return s.invert ? invertRings(rings, s.width, s.height) : rings
+}
+
+// How an imported page sits on the sheet: one scale and an offset that centres it.
+export function importedFit(s: Pick<Settings, 'width' | 'height'>, imported: Imported | null): { k: number; dx: number; dy: number } {
+  if (!imported) return { k: 1, dx: 0, dy: 0 }
+  const k = Math.min(s.width / imported.width, s.height / imported.height)
+  return { k, dx: (s.width - imported.width * k) / 2, dy: (s.height - imported.height * k) / 2 }
 }
 
 // A short fingerprint of an imported outline's points, so an edited file with the same name still counts as new.
@@ -86,6 +95,14 @@ export function startRoots(s: Settings, region: Region, placement: RootPlacement
   const [x0, y0, x1, y1] = region.box
   const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2
   let wanted: Vec[]
+  // An imported drawing or the space round a shape can come in separate parts, such as the letters of a word or
+  // the hole of a ring grown outside. No vein can cross between them, so each part gets its own root: at its
+  // base, or its centre, as asked.
+  if ((s.shape === 'imported' || s.invert) && (placement === 'shape' || placement === 'base' || placement === 'centre')) {
+    const first = placement === 'shape' && s.invert ? defaultRoots(s.shape, s.width, s.height, s.margin, true)[0] : null
+    const roots = spaced(partRoots(region, inset, placement === 'centre' ? 'centre' : 'base', first), 2 * s.segment)
+    return [...roots, ...areaRoots(region, inset, roots)]
+  }
   switch (placement) {
     case 'base': wanted = [[cx, y1]]; break
     case 'centre': wanted = [[cx, cy]]; break
@@ -106,12 +123,6 @@ export function startRoots(s: Settings, region: Region, placement: RootPlacement
       break
     }
     default:
-      // An imported drawing or the space round a shape can come in separate parts, such as the letters of a word or
-      // the hole of a ring grown outside: each part gets a root at its own base, as no vein can cross to it.
-      if (s.shape === 'imported' || s.invert) {
-        const roots = spaced(partRoots(region, inset, s.invert ? defaultRoots(s.shape, s.width, s.height, s.margin, true)[0] : null), 2 * s.segment)
-        return [...roots, ...areaRoots(region, inset, roots)]
-      }
       wanted = defaultRoots(s.shape, s.width, s.height, s.margin, s.invert)
   }
   return spaced(wanted.map(([x, y]) => region.nearestInside(x, y, inset)).filter((p): p is Vec => p !== null), 2 * s.segment)
@@ -164,7 +175,7 @@ function areaRoots(region: Region, inset: number, roots: Vec[]): Vec[] {
   const out: Vec[] = []
   const order = areas.map((cells, k) => k).sort((a, b) => areas[b].length - areas[a].length)
   for (const k of order) {
-    if (held.has(k) || areas[k].length < 4 || roots.length + out.length >= 48) continue
+    if (held.has(k) || areas[k].length < 4 || roots.length + out.length >= MAX_PART_ROOTS) continue
     const cells = areas[k]
     const rows = cells.map(cell => Math.floor(cell / nx))
     const bottom = Math.max(...rows)
@@ -175,14 +186,18 @@ function areaRoots(region: Region, inset: number, roots: Vec[]): Vec[] {
   return out
 }
 
-// A root for each part of the shape, at the bottom middle of the part's outline, moved inside that part; the first
-// part's is at `start` instead when given. Up to 48 parts, largest first.
-function partRoots(region: Region, inset: number, start: Vec | null): Vec[] {
+// The most parts that get a root each; a drawing with more, such as a page of small text, roots its largest.
+export const MAX_PART_ROOTS = 500
+
+// A root for each part of the shape, at the bottom middle or the centre of the part's outline, moved inside that
+// part; the first part's is at `start` instead when given. Largest parts first.
+function partRoots(region: Region, inset: number, where: 'base' | 'centre', start: Vec | null): Vec[] {
   const out: Vec[] = []
-  for (const [k, ring] of region.parts().slice(0, 48).entries()) {
+  for (const [k, ring] of region.parts().slice(0, MAX_PART_ROOTS).entries()) {
     const [x0, y0, x1, y1] = boxOf([ring])
     const inPart = (p: Vec | null): p is Vec => p !== null && pointInRing(ring, p[0], p[1])
-    const near = region.nearestInside(k === 0 && start ? start[0] : (x0 + x1) / 2, k === 0 && start ? start[1] : y1, inset)
+    const aim: Vec = k === 0 && start ? start : [(x0 + x1) / 2, where === 'centre' ? (y0 + y1) / 2 : y1]
+    const near = region.nearestInside(aim[0], aim[1], inset)
     if (inPart(near)) { out.push(near); continue }
     // Nothing near the base inside this part: look up through the part, nearest the middle first.
     const cx = (x0 + x1) / 2
@@ -259,7 +274,10 @@ export function planChange(cur: Design, patch: Partial<Settings>, imported: Impo
   const region = regionOf(settings, imported)
   const reshaped = (['width', 'height', 'margin', 'shape', 'invert'] as const).some(k => settings[k] !== cur.settings[k]) || newOutline
   const newShape = settings.shape !== cur.settings.shape || settings.invert !== cur.settings.invert || newOutline
-  const scaled = cur.roots.map(([x, y]): Vec => [(x * settings.width) / cur.settings.width, (y * settings.height) / cur.settings.height])
+  const was = importedFit(cur.settings, imported), now = importedFit(settings, imported)
+  const scaled = cur.roots.map(([x, y]): Vec => settings.shape === 'imported' && cur.settings.shape === 'imported' && !newOutline
+    ? [((x - was.dx) / was.k) * now.k + now.dx, ((y - was.dy) / was.k) * now.k + now.dy]
+    : [(x * settings.width) / cur.settings.width, (y * settings.height) / cur.settings.height])
   const start = opts.roots ?? (newShape ? startRoots(settings, region) : rootsFor(settings, region, reshaped ? scaled : cur.roots))
   const placed = replace ? placeFor(settings, region, picture ? fitPicture(picture, settings.width, settings.height) : null) : { points: cur.attractors, short: false }
   return {

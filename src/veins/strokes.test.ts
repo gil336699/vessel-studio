@@ -4,7 +4,7 @@ import { readSvgDrawing } from '../lib/svgImport'
 import { ellipseRing, rectRing, signedArea, type Ring } from './geometry'
 import { Rng } from './random'
 import { Region } from './region'
-import { mergeStrokeBands } from './strokes'
+import { mergeStrokeBands, outlinesCross } from './strokes'
 
 // Gil's TestingShapes, 2026-11-18: Illustrator files, 1080 × 1080 pt pages.
 const rings = (name: string): Ring[] =>
@@ -108,4 +108,10 @@ describe('outlines drawn as outlined strokes', () => {
     expect(m.pairs).toBe(0)
     expect(region.area).toBeCloseTo(484 * (area(rings[0]) - area(rings[1])), 3)
   }, 60000)
+
+  it('notices outlines that cross, though not ones nested or sharing a side', () => {
+    expect(outlinesCross([circle(100, 100, 40), circle(150, 100, 40)])).toBe(true)
+    expect(outlinesCross([circle(100, 100, 40), circle(100, 100, 20)])).toBe(false)
+    expect(outlinesCross([rectRing(0, 0, 50, 50), rectRing(50, 0, 100, 50)])).toBe(false)
+  })
 })

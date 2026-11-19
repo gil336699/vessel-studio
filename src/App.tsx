@@ -10,7 +10,7 @@ import { TabPanel, Tabs } from './components/Tabs'
 import { TooltipLayer } from './components/Tooltip'
 import type { Vec } from './veins/geometry'
 import { randomSeed } from './veins/random'
-import { freshDesign, regionOf, shapeRings, startRoots, type Design, type Imported, type RootPlacement } from './lib/design'
+import { freshDesign, MAX_PART_ROOTS, regionOf, shapeRings, startRoots, type Design, type Imported, type RootPlacement } from './lib/design'
 import { designDxf } from './lib/dxfExport'
 import { pngProblem, renderPng } from './lib/pngExport'
 import { readPicture, PictureError, type PictureData } from './lib/picture'
@@ -20,11 +20,12 @@ import { keepSession, type Kept } from './lib/session'
 import { forExport, sceneContents, sceneOf } from './lib/scene'
 import { applyPreset, DEFAULTS, PRESETS, type PresetName, type Settings } from './lib/settings'
 import { designSvg } from './lib/svgExport'
-import { shapeFromDrawing } from './lib/importShape'
+import { atIllustratorSize, shapeFromDrawing } from './lib/importShape'
 import { readSvgDrawing, SvgShapeError } from './lib/svgImport'
-import { pixelSize, toUnits, trimZeros, UNIT_LABEL } from './lib/units'
+import { formatLength, pixelSize, toUnits, trimZeros, UNIT_LABEL } from './lib/units'
 import { useVeins, type Status } from './useVeins'
 import { version } from '../package.json'
+import { touchFirst } from './lib/touch'
 
 type TabId = 'grow' | 'shape' | 'style' | 'file'
 // Written into project files; it comes from package.json, so it moves with every release.
@@ -65,14 +66,19 @@ const share = (part: number, whole: number): string => {
 
 const SHAPE_NAME: Record<Settings['shape'], string> = { leaf: 'Leaf', ellipse: 'Ellipse', rect: 'Rectangle', ring: 'Ring', tree: 'Tree', imported: 'Imported' }
 
-const DONE_TEXT = (done: string, live: number, total: number, outside = false): string => {
+const DONE_TEXT = (done: string, live: number, total: number, outside = false, parts = 1): string => {
   const left = `${live.toLocaleString()} ${live === 1 ? 'attractor was' : 'attractors were'}`
   switch (done) {
     case 'reached': return 'Grown: every attractor reached.'
-    case 'stalled': return live ? `Grown. ${left} left where no vein could grow (${share(live, total)}).` : 'Grown.'
+    case 'stalled': {
+      if (!live) return 'Grown.'
+      // In a shape of separate parts, a part with no root never grows: say what to do about it.
+      const hint = parts > 1 && live > 0.05 * total ? ' Parts with no root can’t grow: Default, under Roots on the Shape tab, puts one in each.' : ''
+      return `Grown. ${left} left where no vein could grow (${share(live, total)}).${hint}`
+    }
     case 'out-of-reach': return `Stopped: ${live === 1 ? 'the attractor left is' : `the ${live.toLocaleString()} attractors left are`} beyond the attraction distance of every vein. Raise the attraction distance, or turn its limit off.`
     case 'cap': return 'Stopped at 400,000 vein points, the most this page grows. Use fewer attractors or a longer segment.'
-    case 'empty': return outside ? 'There are no roots. Pick the Roots tool and click in the space round the shape to add one.' : 'There are no roots. Pick the Roots tool and click inside the shape to add one.'
+    case 'empty': return `There are no roots. Pick the Roots tool and ${touchFirst() ? 'tap' : 'click'} ${outside ? 'in the space round the shape' : 'inside the shape'} to add one.`
     default: return ''
   }
 }
@@ -108,7 +114,11 @@ export function App() {
   }, [status])
 
   const rings = useMemo(() => shapeRings(s, design.imported), [s, design.imported])
-  const region = useMemo(() => regionOf(s, design.imported), [s, design.imported])
+  // Built again only when the sheet or the shape changes, not for every setting: a drawing of many outlines takes
+  // tens of milliseconds to build.
+  const { width: sheetW, height: sheetH, margin, shape, invert } = s
+  const region = useMemo(() => regionOf({ ...DEFAULTS, width: sheetW, height: sheetH, margin, shape, invert }, design.imported), [sheetW, sheetH, margin, shape, invert, design.imported])
+  const partCount = useMemo(() => region.parts().length, [region])
   // The veins as the worker last sent them: a new view with every frame.
   const { net, mirror } = model
   const scene = useMemo(() => sceneOf(s, rings, net, design.attractors, mirror.used, design.roots), [s, rings, net, design.attractors, design.roots, mirror])
@@ -195,12 +205,23 @@ export function App() {
       change({ width: imported.width, height: imported.height, shape: 'imported', invert: false, units: shape.units }, null, { imported })
       setTab('shape')
       // The notes stay on the Shape tab after the status line moves on.
-      setImportNotes({ rings: imported.rings, text: [...shape.notes, ...shape.warnings] })
+      setImportNotes({ rings: imported.rings, text: [...shape.notes, ...shape.warnings].filter(t => !t.startsWith('The file doesn’t say its size')) })
       const outlines = imported.rings.length
-      setStatus({ text: [`Using ${file.name}: ${outlines} ${outlines === 1 ? 'outline' : 'outlines'}.`, ...shape.notes, ...shape.warnings].join(' '), warning: shape.warnings.length > 0 })
+      // A page of small text can have more parts than get a root each; say so, as the rest won't grow.
+      const parts = regionOf({ ...cur, width: imported.width, height: imported.height, shape: 'imported', invert: false }, imported).parts().length
+      const many = parts > MAX_PART_ROOTS ? [`It has ${parts.toLocaleString()} separate parts; the ${MAX_PART_ROOTS} largest get a root each, and the Roots tool adds more.`] : []
+      setStatus({ text: [`Using ${file.name}: ${outlines} ${outlines === 1 ? 'outline' : 'outlines'}.`, ...shape.notes, ...shape.warnings, ...many].join(' '), warning: shape.warnings.length + many.length > 0 })
     } catch (error) {
       setStatus({ text: error instanceof SvgShapeError ? error.message : `${file.name} could not be read as an SVG.`, warning: true })
     }
+  }
+
+  const illustratorSize = () => {
+    const cur = model.current()
+    if (!cur.imported) return
+    const imported = atIllustratorSize(cur.imported)
+    change({ width: imported.width, height: imported.height, units: 'pt' }, null, { imported })
+    setStatus({ text: `Read at 72 points per inch, as Illustrator writes it: the page is now ${formatLength(imported.width, 'pt', cur.settings.dpi)} × ${formatLength(imported.height, 'pt', cur.settings.dpi)}.` })
   }
 
   const readPictureFile = async (file: File) => {
@@ -209,7 +230,11 @@ export function App() {
       setPicture(pic)
       model.pictureChanged(pic)
       if (model.current().settings.placement !== 'picture') change({ placement: 'picture' }, 'placement')
-      setStatus({ text: `Using ${file.name}: darker areas get more attractors. The picture isn’t saved in the project; its attractors are.` })
+      // A picture with nothing dark in it spreads the attractors evenly, which is rarely what was meant.
+      let darkest = 0
+      for (let i = 0; i < pic.dark.length; i++) if (pic.dark[i] > darkest) darkest = pic.dark[i]
+      if (darkest < 0.05) setStatus({ text: `${file.name} is almost white, so the attractors are spread evenly. Choose a picture that’s darker where veins should crowd.`, warning: true })
+      else setStatus({ text: `Using ${file.name}: darker areas get more attractors. The picture isn’t saved in the project; its attractors are.` })
     } catch (error) {
       setStatus({ text: error instanceof PictureError ? error.message : `${file.name} could not be read as a picture.`, warning: true })
     }
@@ -278,30 +303,48 @@ export function App() {
   const preset = (name: PresetName) => {
     const cur = model.current()
     const next = applyPreset(cur.settings, name)
+    // A picture chosen to place attractors stays in charge of them.
+    const keepsPicture = cur.settings.placement === 'picture' && picture !== null
+    if (keepsPicture) next.placement = 'picture'
     const p = PRESETS.find(item => item.id === name)!
     const roots = startRoots(next, regionOf(next, cur.imported), p.roots)
     change(next, 'preset', { roots, quiet: true })
     // A preset brings its own built-in shape; say so when that replaces the one chosen.
     const shapeNote = next.shape === 'imported' ? ' Your imported shape stays.'
       : next.shape !== cur.settings.shape ? ` It uses the ${SHAPE_NAME[next.shape]} shape; choose another on the Shape tab.` : ''
-    setStatus({ text: `${p.label}: ${p.tip}${shapeNote}` })
+    setStatus({ text: `${p.label}: ${p.tip}${shapeNote}${keepsPicture ? ' Your picture still places the attractors.' : ''}` })
   }
   const placeRoots = (placement: RootPlacement) => {
     const cur = model.current()
     const roots = startRoots(cur.settings, regionOf(cur.settings, cur.imported), placement)
     if (!roots.length) { setStatus({ text: 'No room for roots there in this shape.', warning: true }); return }
-    setStatus(null)
-    void model.setRoots(roots)
+    // Leaf growth grows the shape out from the first root, so the rest of a row or a ring of roots would wait on it.
+    const many = (placement === 'row' || placement === 'edge') && cur.settings.leafGrowth
+    if (many) change({ leafGrowth: false }, 'leafGrowth')
+    void model.setRoots(roots, null, many ? 'Leaf growth is off, so every root grows at once; it grows the shape out from one root. Turn it on again on the Grow tab.' : undefined)
+    if (!many) setStatus(null)
   }
-  const moveRoot = (index: number, x: number, y: number) => void model.setRoots(design.roots.map((r, i): Vec => (i === index ? [x, y] : r)), 'move-root')
+  // Moving or removing a root starts the veins again, so once they've grown it asks first, as Reset does: a stray
+  // drag, Alt-click, or a finger held on a root, would otherwise throw a long run away.
+  const grown = stats.step > 0 && unsaved
+  const moveRoot = (index: number, x: number, y: number) => guard(grown, {
+    title: 'Move the root?', confirm: 'Move',
+    body: 'The veins start again from the roots where they are now. Undo brings them back.',
+    run: () => void model.setRoots(design.roots.map((r, i): Vec => (i === index ? [x, y] : r)), 'move-root'),
+  })
   const removeRoot = (index: number) => {
-    void model.setRoots(design.roots.filter((_, i) => i !== index))
-    setStatus({ text: design.roots.length > 1 ? 'Removed a root. Undo brings it back.' : 'Removed the last root. Add one with the Roots tool to grow again.' })
+    const last = design.roots.length <= 1
+    guard(grown, {
+      title: last ? 'Remove the last root?' : 'Remove the root?', confirm: 'Remove',
+      body: last ? 'The veins go, and nothing grows until you add a root. Undo brings them back.' : 'The veins start again from the other roots. Undo brings them back.',
+      run: () => void model.setRoots(design.roots.filter((_, i) => i !== index), null,
+        last ? 'Removed the last root. Add one with the Roots tool to grow again.' : grown ? 'Removed a root; the veins started again from the others. Undo brings them back.' : 'Removed a root. Undo brings it back.'),
+    })
   }
 
   const noRoots = stats.points === 0 && 'There are no roots. Pick the Roots tool and click inside the shape to add one.'
   const noAttractors = design.attractors.length === 0 && 'There are no attractors to grow toward. Raise the count on the Grow tab, or choose another shape.'
-  const finished = stats.done && stats.done !== 'empty' && `${DONE_TEXT(stats.done, stats.live, design.attractors.length / 2, s.invert)} Reset to grow again, change a growth setting, or add a root.`
+  const finished = stats.done && stats.done !== 'empty' && `${DONE_TEXT(stats.done, stats.live, design.attractors.length / 2, s.invert, partCount)} Reset to grow again, change a growth setting, or add a root.`
   const canGrow = noRoots || noAttractors || finished || false
   const resetBlocked = stats.step === 0 && stats.points === design.roots.length && !model.running && 'The veins are already at their roots.'
   const reset = () => guard(stats.step > 0 && unsaved, {
@@ -351,9 +394,9 @@ export function App() {
   })
 
   const counts = `${stats.points.toLocaleString()} vein ${stats.points === 1 ? 'point' : 'points'} · ${stats.live.toLocaleString()} ${stats.live === 1 ? 'attractor' : 'attractors'} left · step ${stats.step.toLocaleString()}`
-  const doneText = stats.done ? DONE_TEXT(stats.done, stats.live, design.attractors.length / 2, s.invert) : ''
+  const doneText = stats.done ? DONE_TEXT(stats.done, stats.live, design.attractors.length / 2, s.invert, partCount) : ''
   const statusText = status?.text ?? (model.stopping ? 'Stopping after the current step…'
-    : model.running ? `Growing · ${counts}` : doneText ? `${doneText} ${counts}` : counts)
+    : model.running ? `Growing · ${counts}` : doneText ? (stats.done === 'out-of-reach' || stats.done === 'cap' ? doneText : `${doneText} ${counts}`) : counts)
 
   return <main className="studio">
     <TooltipLayer />
@@ -386,7 +429,7 @@ export function App() {
       </TabPanel>
       <TabPanel idBase="design" id="shape" value={tab}>
         <ShapePanel s={s} imported={design.imported} rootCount={design.roots.length} change={change} onImport={importSvg} onRoots={placeRoots}
-          importNotes={importNotes && design.imported?.rings === importNotes.rings ? importNotes.text : null} />
+          importNotes={importNotes && design.imported?.rings === importNotes.rings ? importNotes.text : null} onIllustratorSize={illustratorSize} />
       </TabPanel>
       <TabPanel idBase="design" id="style" value={tab}><StylePanel s={s} change={change} /></TabPanel>
       <TabPanel idBase="design" id="file" value={tab}>
@@ -427,6 +470,10 @@ export function App() {
     </aside>
 
     {pending && <ConfirmDialog pending={pending} onCancel={() => setPending(null)} />}
-    {showHelp && <HelpDialog onClose={() => setShowHelp(false)} onQuickStart={() => { setShowHelp(false); setShowQuickStart(true) }} />}
+    {showHelp && <HelpDialog onClose={() => setShowHelp(false)} onQuickStart={() => {
+      setShowHelp(false); setShowQuickStart(true)
+      // After the dialog hands focus back, move it to the guide's button, which would be far down the Tab order.
+      window.setTimeout(() => document.querySelector<HTMLElement>('.quick-start button')?.focus(), 0)
+    }} />}
   </main>
 }

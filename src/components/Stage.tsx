@@ -153,14 +153,17 @@ export function Stage({ scene, settings, roots, region, tool, frameRef, controlR
   const tapRef = useRef(onSpaceTap)
   useEffect(() => { tapRef.current = onSpaceTap }, [onSpaceTap])
   const hold = useRef(0)
-  const pressed = useRef<Element | null>(null)
+  // Whether the last thing done was with the pointer: then a focused control got its focus from a click, or from a
+  // dialog closed with one, and Space grows. Tab and the arrow keys move focus by keyboard, and Space works the
+  // control again.
+  const pointerLast = useRef(false)
   useEffect(() => {
-    const CONTROL = 'button, input[type=range], input[type=checkbox]'
-    const pointer = (event: PointerEvent) => { pressed.current = event.target instanceof Element ? event.target.closest(CONTROL) : null }
-    const tab = (event: KeyboardEvent) => { if (event.key === 'Tab') pressed.current = null }
-    const byPointer = (event: KeyboardEvent) => event.target instanceof Element && pressed.current !== null
-      && event.target.closest(CONTROL) === pressed.current && !event.target.closest('[role=dialog], [role=alertdialog]')
-    const ignored = (event: KeyboardEvent) => event.target instanceof Element && Boolean(event.target.closest('input, select, textarea, button, [role=dialog], [role=alertdialog]')) && !byPointer(event)
+    const CONTROL = 'button, input[type=range], input[type=checkbox], summary'
+    const pointer = () => { pointerLast.current = true }
+    const key = (event: KeyboardEvent) => { if (event.key === 'Tab' || event.key.startsWith('Arrow') || event.key === 'Home' || event.key === 'End') pointerLast.current = false }
+    const byPointer = (event: KeyboardEvent) => event.target instanceof Element && pointerLast.current
+      && Boolean(event.target.closest(CONTROL)) && !event.target.closest('[role=dialog], [role=alertdialog]')
+    const ignored = (event: KeyboardEvent) => event.target instanceof Element && Boolean(event.target.closest('input, select, textarea, button, summary, [role=dialog], [role=alertdialog]')) && !byPointer(event)
     const down = (event: KeyboardEvent) => {
       if (event.code !== 'Space' || ignored(event)) return
       event.preventDefault()
@@ -177,11 +180,11 @@ export function Stage({ scene, settings, roots, region, tool, frameRef, controlR
       if (tapped) tapRef.current()
     }
     window.addEventListener('pointerdown', pointer, true)
-    window.addEventListener('keydown', tab, true)
+    window.addEventListener('keydown', key, true)
     window.addEventListener('keydown', down)
     window.addEventListener('keyup', up)
     return () => {
-      window.removeEventListener('pointerdown', pointer, true); window.removeEventListener('keydown', tab, true)
+      window.removeEventListener('pointerdown', pointer, true); window.removeEventListener('keydown', key, true)
       window.removeEventListener('keydown', down); window.removeEventListener('keyup', up)
     }
   }, [toolCursor])

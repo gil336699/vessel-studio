@@ -12,6 +12,27 @@ export function signedArea(ring: Ring): number {
 
 export type Box = [number, number, number, number] // x0, y0, x1, y1
 
+// A ring clipped to a box (Sutherland–Hodgman), so only what lies on the box is left. For an even-odd shape,
+// clipping each ring to the box leaves exactly the shape within it. A ring already inside comes back as it was.
+export function clipRingToBox(ring: Ring, [x0, y0, x1, y1]: Box): Ring {
+  if (ring.every(([x, y]) => x >= x0 && x <= x1 && y >= y0 && y <= y1)) return ring
+  const side = (keep: (p: Vec) => boolean, cut: (a: Vec, b: Vec) => Vec) => (pts: Ring): Ring => {
+    const out: Ring = []
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[(i + pts.length - 1) % pts.length], b = pts[i]
+      if (keep(b)) { if (!keep(a)) out.push(cut(a, b)); out.push(b) } else if (keep(a)) out.push(cut(a, b))
+    }
+    return out
+  }
+  const atX = (x: number) => (a: Vec, b: Vec): Vec => [x, a[1] + ((b[1] - a[1]) * (x - a[0])) / (b[0] - a[0])]
+  const atY = (y: number) => (a: Vec, b: Vec): Vec => [a[0] + ((b[0] - a[0]) * (y - a[1])) / (b[1] - a[1]), y]
+  let out = side(p => p[0] >= x0, atX(x0))(ring)
+  out = side(p => p[0] <= x1, atX(x1))(out)
+  out = side(p => p[1] >= y0, atY(y0))(out)
+  out = side(p => p[1] <= y1, atY(y1))(out)
+  return out
+}
+
 // Even-odd inside test against one ring.
 export function pointInRing(ring: Ring, x: number, y: number): boolean {
   let inside = false

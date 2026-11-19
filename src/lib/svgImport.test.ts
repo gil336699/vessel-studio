@@ -74,6 +74,28 @@ describe('reading SVG files', () => {
     expect(box(d, 3)).toEqual([5, 15, 25, 35])
   })
 
+  it('draws symbols, nested pages and switches as a browser does', () => {
+    const at = (body: string) => readSvgDrawing(`<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="100mm" viewBox="0 0 100 100">${body}</svg>`)
+    // A use with no width or height fills the viewport.
+    expect(box(at('<symbol id="s" viewBox="0 0 10 10"><rect width="10" height="10"/></symbol><use href="#s"/>'), 0)).toEqual([0, 0, 100, 100])
+    // preserveAspectRatio="none" stretches the symbol to the use.
+    expect(box(at('<symbol id="s" viewBox="0 0 10 10" preserveAspectRatio="none"><rect width="10" height="10"/></symbol><use href="#s" width="20" height="40"/>'), 0)).toEqual([0, 0, 20, 40])
+    // A nested page's viewBox maps onto its width and height.
+    expect(box(at('<svg x="10" y="10" width="50" height="50" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>'), 0)).toEqual([10, 10, 60, 60])
+    // A switch draws its first child even when that child is hidden, which then draws nothing.
+    expect(() => at('<switch><g style="display:none"><rect width="10" height="10"/></g><rect x="50" width="10" height="10"/></switch>')).toThrow(/no paths/)
+  })
+
+  it('refuses a file of copies of copies before it fills memory', () => {
+    // 50 × 50 × 50 copies of a 5 KB path would be 600 MB, more than a browser can hold as text.
+    const path = `<path d="M0 0${' L1 1'.repeat(1000)}Z"/>`
+    const uses = (id: string) => Array.from({ length: 50 }, () => `<use href="#${id}"/>`).join('')
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="10mm" height="10mm" viewBox="0 0 10 10"><defs><g id="a">${path}</g><g id="b">${uses('a')}</g><g id="c">${uses('b')}</g></defs>${uses('c')}</svg>`
+    const t = performance.now()
+    expect(() => readSvgDrawing(svg)).toThrow(/too much detail/)
+    expect(performance.now() - t).toBeLessThan(5000)
+  })
+
   it('reads shape sizes given with units', () => {
     const d = readSvgDrawing(`<svg xmlns="http://www.w3.org/2000/svg" width="200mm" height="200mm" viewBox="0 0 755.906 755.906">
       <rect x="1in" y="0" width="50px" height="20mm"/><circle cx="100" cy="100" r="1cm"/></svg>`)

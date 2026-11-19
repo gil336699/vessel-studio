@@ -1,5 +1,5 @@
 import { memo, type ReactNode } from 'react'
-import { networkStats } from '../veins/network'
+import { networkStats, veinWidths } from '../veins/network'
 import type { Settings } from '../lib/settings'
 import { formatLength, formatLong } from '../lib/units'
 import type { Stats } from '../useVeins'
@@ -7,6 +7,7 @@ import { Button } from './Controls'
 import { Icon, type IconName } from './Icon'
 import type { Tool } from './Stage'
 import { touchFirst } from '../lib/touch'
+import { widthSettings } from '../lib/settings'
 
 // The floating bars round the sheet: tools and what's shown on top, growth controls and status below, and the
 // measurements panel.
@@ -30,7 +31,7 @@ export type ViewKey = 'showVeins' | 'showAttractors' | 'showBoundary' | 'showRoo
 const VIEW: { key: ViewKey; label: string; name: string; shortcut: string; tip: string }[] = [
   { key: 'showVeins', label: 'Veins', name: 'Show veins', shortcut: '1', tip: 'Show or hide the veins; exports hold what’s shown.' },
   { key: 'showAttractors', label: 'Attractors', name: 'Show attractors', shortcut: '2', tip: 'Show or hide the attractors still in play, the points veins grow toward; exports hold what’s shown.' },
-  { key: 'showBoundary', label: 'Shape', name: 'Show the shape’s outline', shortcut: '3', tip: 'Show or hide the shape’s outline; exports hold what’s shown.' },
+  { key: 'showBoundary', label: 'Outline', name: 'Show the shape’s outline', shortcut: '3', tip: 'Show or hide the shape’s outline; exports hold what’s shown.' },
   { key: 'showRoots', label: 'Roots', name: 'Show roots', shortcut: '4', tip: 'Show or hide the roots, where veins start; exports hold what’s shown.' },
 ]
 
@@ -73,7 +74,7 @@ export function Dock({ running, stopping, canGrow, onGrow, onPause, onStep, onRe
         <Button shortcut="S" unavailable={busy || canGrow} tip="Grow by a single step." onClick={onStep}><Icon name="step" /><span className="compact-label">Step</span></Button>
         <Button shortcut="R" unavailable={canReset} tip="Go back to the roots, before any growth. Undo brings the veins back." onClick={onReset}><Icon name="reset" /><span className="compact-label">Reset</span></Button>
       </div>
-      <span className="timeline-status" role="status" data-warning={warning} data-tip={typeof status === 'string' && status.length > 90 ? status : undefined}>{status}</span>
+      <span className="timeline-status" role="status" aria-live={running ? 'off' : 'polite'} data-warning={warning} data-tip={typeof status === 'string' && status.length > 90 ? status : undefined}>{status}</span>
       <div className="transport" role="group" aria-label="History">
         <Button className="icon-button" label="Undo" shortcut="⌘Z" unavailable={!canUndo && 'Nothing to undo yet.'} tip="Undo the last change. Undoing while veins grow pauses them first." onClick={onUndo}><Icon name="undo" /></Button>
         <Button className="icon-button" label="Redo" shortcut="⇧⌘Z" unavailable={!canRedo && 'Nothing to redo.'} tip="Redo the change you undid." onClick={onRedo}><Icon name="redo" /></Button>
@@ -88,6 +89,9 @@ type Net = { x: ArrayLike<number>; y: ArrayLike<number>; parent: ArrayLike<numbe
 export const Inspector = memo(function Inspector({ s, stats, net, attractors, roots }: { s: Settings; stats: Stats; net: Net; attractors: number; roots: number }) {
   const n = networkStats(net.x, net.y, net.parent, net.joins, net.points)
   const L = (mm: number) => formatLength(mm, s.units, s.dpi, true)
+  // Max width is a cap: how wide veins get depends on how many ends they feed, so show the widest.
+  let widest = 0
+  if (net.points > 1) { const w = veinWidths(net.parent, net.points, widthSettings(s)); for (let i = 0; i < w.length; i++) if (w[i] > widest) widest = w[i] }
   const rows: [string, string, string][] = [
     ['Sheet', `${formatLength(s.width, s.units, s.dpi)} × ${formatLength(s.height, s.units, s.dpi)}`, 'Width × height of the sheet, which is also the size of every export.'],
     ['Vein points', n.points.toLocaleString(), 'Points the veins are made of, one segment length apart.'],
@@ -95,8 +99,9 @@ export const Inspector = memo(function Inspector({ s, stats, net, attractors, ro
     ['Vein ends', n.ends.toLocaleString(), 'Veins that end freely, not in a loop.'],
     ['Loops', n.loops.toLocaleString(), 'Places where veins from two sides met at an attractor and joined, closing a loop. Turn on Loops on the Grow tab.'],
     ['Roots', roots.toLocaleString(), 'Where veins start. Add them with the Roots tool.'],
-    ['Attractors left', `${stats.live.toLocaleString()} of ${attractors.toLocaleString()}${stats.waiting ? ` (${stats.waiting.toLocaleString()} waiting for the leaf)` : ''}`, 'Attractors not yet reached by a vein. With leaf growth, some wait until the growing outline reaches them.'],
+    ['Attractors left', `${stats.live.toLocaleString()} of ${attractors.toLocaleString()}${stats.waiting ? ` · ${stats.waiting.toLocaleString()} waiting` : ''}`, 'Attractors not yet reached by a vein. With leaf growth, some wait until the growing outline reaches them.'],
     ['Total length', formatLong(n.length, s.units), 'Length of every vein, to estimate plotter or laser time.'],
+    ['Widest vein', widest ? L(widest) : '—', 'The widest vein, near the roots; Max width caps it, and a lower Murray exponent thickens veins faster.'],
     ['Segment', L(s.segment), 'Distance between neighbouring vein points.'],
     ['Steps', stats.step.toLocaleString(), 'Growth steps since the roots.'],
     ['Speed', stats.rate ? `${Math.round(stats.rate).toLocaleString()} steps/s` : '—', 'Steps per second while growing.'],

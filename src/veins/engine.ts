@@ -218,8 +218,8 @@ export class Engine {
     }
     this.params = { ...params }
     if (leafChanged) this.setLeafGrowth()
-    // New settings may let growth carry on.
-    if (this.done && this.done !== 'empty') this.done = null
+    // New settings may let growth carry on, unless every attractor is already reached.
+    if (this.done && this.done !== 'empty' && this.done !== 'reached') this.done = null
   }
 
   // A root added while growing starts a new vein of its own.

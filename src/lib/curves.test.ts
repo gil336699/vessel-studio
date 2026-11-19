@@ -87,4 +87,13 @@ describe('smooth curves in exports', () => {
     expect(checked).toBeGreaterThan(10000)
     expect(close).toBe(0)
   })
+
+  it('reads its own SVG back as the shape alone, not its attractor and root dots', () => {
+    const s = { ...applyPreset({ ...DEFAULTS }, 'leaf'), showAttractors: true, showRoots: true }
+    const { region, scene } = grown(s, null)
+    const svg = designSvg(forExport(scene, s, region), s)
+    expect(svg).toMatch(/<circle /)
+    const back = readSvgDrawing(svg)
+    expect(back.paths.filter(p => p.closed)).toHaveLength(scene.rings?.length ?? 0)
+  })
 })

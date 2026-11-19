@@ -6,6 +6,7 @@ import { formatLength, pixelSize, type Units } from '../lib/units'
 import type { ShapeKind } from '../veins/shapes'
 import { Button, LengthField, NumberField, Section, Segmented, SwitchField, type Option } from './Controls'
 import { Icon } from './Icon'
+import { touchFirst } from '../lib/touch'
 
 export type Change = (patch: Partial<Settings>, key?: string | null) => void
 
@@ -24,7 +25,7 @@ const shapes = (imported: boolean): Option<ShapeKind>[] => [
   { value: 'imported', label: 'Imported', tip: 'Grow inside the closed shapes of an SVG you imported. Shapes inside shapes are holes.', unavailable: !imported && 'Import an SVG first, with the button below.' },
 ]
 const ROOTS: { id: RootPlacement; label: string; tip: string }[] = [
-  { id: 'shape', label: 'Shape’s own', tip: 'One root where this shape starts: a leaf’s base, an ellipse’s centre, the bottom of a rectangle.' },
+  { id: 'shape', label: 'Default', tip: 'Where this shape starts: a leaf’s base, an ellipse’s centre, the base of each part of a drawing.' },
   { id: 'base', label: 'Base', tip: 'One root at the bottom middle of the shape.' },
   { id: 'centre', label: 'Centre', tip: 'One root in the middle of the shape.' },
   { id: 'row', label: 'Row', tip: 'A row of roots along the bottom, for parallel veins, as in grass.' },
@@ -39,9 +40,9 @@ const ASSUMED = {
   illustrator: 'The file doesn’t say how big it is. It looks like it came from Illustrator, so it was read at 72 points per inch, as Illustrator writes it.',
 }
 
-export const ShapePanel = memo(function ShapePanel({ s, imported, rootCount, change, onImport, onRoots, importNotes }: {
+export const ShapePanel = memo(function ShapePanel({ s, imported, rootCount, change, onImport, onRoots, importNotes, onIllustratorSize }: {
   s: Settings; imported: Imported | null; rootCount: number; change: Change; onImport: () => void; onRoots: (placement: RootPlacement) => void
-  importNotes: string[] | null
+  importNotes: string[] | null; onIllustratorSize: () => void
 }) {
   const preset = matchPreset(s.width, s.height, s.units, s.dpi)
   const [pw, ph] = pixelSize(s.width, s.height, s.dpi)
@@ -103,13 +104,18 @@ export const ShapePanel = memo(function ShapePanel({ s, imported, rootCount, cha
         {imported.sized !== 'file' && !resized(s, imported) ? ` ${ASSUMED[imported.sized]}` : ''}
         {importNotes?.length ? ` ${importNotes.join(' ')}` : ''}
       </p>}
+      {s.shape === 'imported' && imported?.sized === 'css' && !resized(s, imported) && <div className="button-row single">
+        <Button tip="Illustrator writes 72 points per inch: read this file again at that size, a third larger." onClick={onIllustratorSize}>Read at 72 points per inch</Button>
+      </div>}
     </Section>
 
     <Section title="Roots" tip="Where veins start. Each root grows its own network, and networks compete for space.">
       <div className="button-row roots-row">
         {ROOTS.map(r => <Button key={r.id} tip={`${r.tip} Replaces the roots and starts the veins over.`} onClick={() => onRoots(r.id)}>{r.label}</Button>)}
       </div>
-      <p className="hint">{rootCount ? `${rootCount} ${rootCount === 1 ? 'root' : 'roots'}.` : 'No roots yet.'} Use the Roots tool to add one where you click, drag one to move it, or Alt-click one to remove it.</p>
+      <p className="hint">{rootCount ? `${rootCount} ${rootCount === 1 ? 'root' : 'roots'}.` : 'No roots yet.'} {touchFirst()
+        ? 'Use the Roots tool to add one where you tap, drag one to move it, or press and hold one to remove it.'
+        : 'Use the Roots tool to add one where you click, drag one to move it, or Alt-click one to remove it.'}</p>
     </Section>
   </>
 })
