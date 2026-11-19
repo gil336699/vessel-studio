@@ -157,6 +157,25 @@ export class Region {
     return best
   }
 
+  // Whether the whole segment from a to b stays at least r from every edge: the edge clearance. Searches the grid
+  // cells round the segment and measures exact segment-to-edge distances, so a vein can't cut close past a corner.
+  clearOf(ax: number, ay: number, bx: number, by: number, r: number): boolean {
+    if (this.edgeCount === 0 || !(r > 0)) return true
+    const c0 = this.cx(Math.min(ax, bx) - r), c1 = this.cx(Math.max(ax, bx) + r)
+    const r0 = this.cy(Math.min(ay, by) - r), r1 = this.cy(Math.max(ay, by) + r)
+    const q = ++this.query
+    for (let j = r0; j <= r1; j++) for (let k = c0; k <= c1; k++) {
+      const c = j * this.nx + k
+      for (let m = this.cellStart[c]; m < this.cellStart[c + 1]; m++) {
+        const i = this.cellItems[m]
+        if (this.stamp[i] === q) continue
+        this.stamp[i] = q
+        if (segmentDistance(ax, ay, bx, by, this.ex0[i], this.ey0[i], this.ex1[i], this.ey1[i]) < r) return false
+      }
+    }
+    return true
+  }
+
   // The point itself when it's inside, otherwise the nearest point a little way inside the edge. Used for roots,
   // which must start inside so their first step doesn't cross the edge.
   nearestInside(x: number, y: number, inset: number): Vec | null {
@@ -193,6 +212,12 @@ export class Region {
       else { tMaxY += tDeltaY; j += stepY; if (j < 0 || j >= this.ny) return }
     }
   }
+}
+
+// The shortest distance between segments ab and cd: 0 when they meet, otherwise from an end of one to the other.
+function segmentDistance(ax: number, ay: number, bx: number, by: number, cx: number, cy: number, dx: number, dy: number): number {
+  if (segmentMeets(ax, ay, bx, by, cx, cy, dx, dy)) return 0
+  return Math.min(toSegment(ax, ay, cx, cy, dx, dy).d, toSegment(bx, by, cx, cy, dx, dy).d, toSegment(cx, cy, ax, ay, bx, by).d, toSegment(dx, dy, ax, ay, bx, by).d)
 }
 
 // Whether segments ab and cd meet: cross, touch, or overlap. Cautious on purpose (see geometry.segmentsCross).

@@ -10,7 +10,8 @@
 //    and stays until all of them have arrived; then they join there.
 // 2. Grow. Every vein point that was pulled adds one point, a segment length away, toward the average of its
 //    pulls, optionally blended with its last heading (Keep heading), a seeded wobble (Wiggle) and a steady Pull.
-//    A new point that would leave the shape, or land on another vein, is refused.
+//    A new point that would leave the shape, come nearer its edges than the edge clearance, or land on another
+//    vein, is refused. With loops, only veins clear of the edges join at an attractor.
 // 3. The step's new points go in together, so the result never depends on the order points are visited.
 //    A refused step still counts for the attractors it would have reached: another vein already fills that
 //    space. Without that, an attractor caught between two veins pulls one of them forever. The older pages
@@ -38,6 +39,7 @@ export type GrowthParams = {
   pull: number // 0–1: steady pull added to each step's heading
   pullMode: PullMode
   crowd: number // 0–0.9 of a segment: a new point this close to another vein point is refused; 0 turns it off
+  clearance?: number // mm: veins stay at least this far from the shape's edges and holes; 0 or missing is off
   leafSteps: number // leaf growth: steps for the outline to grow to full size from the first root; 0 is off
   minLoop: number // loops: veins this many segments apart along the tree don't join, so no tiny bulbs
   maxPoints: number // a cap on vein points, to keep the browser responsive
@@ -371,7 +373,7 @@ export class Engine {
     touched.sort((a, b) => a - b)
 
     // Grow the pulled points, all from the positions before this step.
-    const D = P.segment, crowd2 = (P.crowd * D) ** 2
+    const D = P.segment, crowd2 = (P.crowd * D) ** 2, clear = this.region ? P.clearance ?? 0 : 0
     const newX: number[] = [], newY: number[] = [], newParent: number[] = []
     // A refused step uses up the attractors it would have come close to: a vein already fills that space.
     const covered = (P.kill + P.crowd * D) ** 2
@@ -405,6 +407,7 @@ export class Engine {
       if (!(mag > 1e-12)) continue
       const px = xs[v] + (vx / mag) * D, py = ys[v] + (vy / mag) * D
       if (this.region && (!this.region.contains(px, py) || this.region.crosses(xs[v], ys[v], px, py))) { refuse(list, px, py); continue }
+      if (clear > 0 && !this.region!.clearOf(xs[v], ys[v], px, py, clear)) { refuse(list, px, py); continue }
       if (crowd2 > 0) {
         let crowded = false
         this.grid.near(px, py, P.crowd * D, xs, ys, id => { if (id !== v) { crowded = true; return true } })
@@ -419,8 +422,9 @@ export class Engine {
     // Loops: each resolved source becomes a junction joined to every vein that arrived, unless two arrivals are
     // close along the tree, which would close a tiny bulb.
     let joined = 0
-    for (const { s, arrived } of resolved) {
+    for (const { s, arrived: all } of resolved) {
       this.used[s] = USED; usedNow.push(s)
+      const arrived = this.clearArrivals(s, all)
       if (arrived.length < 2) continue
       const first = arrived[0]
       const others = arrived.slice(1).filter(v => this.treeGap(v, first, P.minLoop) > P.minLoop)
@@ -452,9 +456,10 @@ export class Engine {
     for (let s = 0; s < this.ax.length; s++) {
       if (this.used[s] !== LIVE || this.appear[s] > this.step) continue
       if (!(Math.sqrt(this.best[s]) < P.kill)) continue
-      const arrived = this.neighbourhood(s, 0, P.kill).map(([v]) => v)
-      if (!arrived.length) continue
+      const found = this.neighbourhood(s, 0, P.kill).map(([v]) => v)
+      if (!found.length) continue
       this.used[s] = USED; out.push(s)
+      const arrived = this.clearArrivals(s, found)
       if (arrived.length < 2) continue
       const others = arrived.slice(1).filter(v => this.treeGap(v, arrived[0], P.minLoop) > P.minLoop)
       if (!others.length) continue
@@ -463,6 +468,13 @@ export class Engine {
     }
     if (this.xs.length > from) this.refreshNearest(from)
     return out
+  }
+
+  // The veins that arrived at source s whose join to it stays clear of the edges, when there's an edge clearance.
+  private clearArrivals(s: number, arrived: number[]): number[] {
+    const clear = this.params.clearance ?? 0
+    if (!this.region || !(clear > 0)) return arrived
+    return arrived.filter(v => this.region!.clearOf(this.xs.data[v], this.ys.data[v], this.ax[s], this.ay[s], clear))
   }
 
   // The relative neighbourhood of source s among the vein points it can see: v counts unless some u is nearer

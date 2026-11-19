@@ -24,11 +24,15 @@ export function darknessAt(map: DensityMap, x: number, y: number): number {
 
 export type Placed = { points: Float64Array; short: boolean }
 
-export function placeAttractors(region: Region, count: number, placement: Placement, seed: number, picture?: DensityMap | null): Placed {
+// clearance: no attractor closer than this to an edge, so veins can reach them all without coming nearer.
+export function placeAttractors(region: Region, count: number, placement: Placement, seed: number, picture?: DensityMap | null, clearance = 0): Placed {
   const n = Math.max(0, Math.floor(count))
   if (n === 0 || region.empty || region.area <= 0) return { points: new Float64Array(0), short: n > 0 }
   const rng = new Rng(seed)
-  if (placement === 'grid') return gridPoints(region, n, rng)
+  const fits = clearance > 0
+    ? (x: number, y: number) => region.contains(x, y) && region.edgeDistance(x, y, clearance) >= clearance
+    : (x: number, y: number) => region.contains(x, y)
+  if (placement === 'grid') return gridPoints(region, n, rng, fits)
   const [x0, y0, x1, y1] = region.box
   const w = x1 - x0, h = y1 - y0
   const size = Math.min(w, h)
@@ -60,7 +64,7 @@ export function placeAttractors(region: Region, count: number, placement: Placem
   const sample = (): [number, number] | null => {
     for (let tries = 0; tries < 400; tries++) {
       const x = x0 + rng.next() * w, y = y0 + rng.next() * h
-      if (!region.contains(x, y)) continue
+      if (!fits(x, y)) continue
       if (density && rng.next() >= density(x, y)) continue
       return [x, y]
     }
@@ -94,14 +98,14 @@ export function placeAttractors(region: Region, count: number, placement: Placem
 // A square grid with the spacing that fits `n` points in the shape, each point moved up to half a cell at random.
 // Grid points outside the shape are dropped; if that leaves too few, the grid is refined until there are enough,
 // then trimmed to exactly n in a random order.
-function gridPoints(region: Region, n: number, rng: Rng): Placed {
+function gridPoints(region: Region, n: number, rng: Rng, fits: (x: number, y: number) => boolean): Placed {
   const [x0, y0, x1, y1] = region.box
   let a = Math.sqrt(region.area / n)
   for (let attempt = 0; attempt < 16; attempt++) {
     const pts: number[] = []
     for (let y = y0 + a / 2; y < y1; y += a) for (let x = x0 + a / 2; x < x1; x += a) {
       const px = x + (rng.next() - 0.5) * a, py = y + (rng.next() - 0.5) * a
-      if (region.contains(px, py)) pts.push(px, py)
+      if (fits(px, py)) pts.push(px, py)
     }
     if (pts.length / 2 >= n || attempt === 15) {
       const count = pts.length / 2

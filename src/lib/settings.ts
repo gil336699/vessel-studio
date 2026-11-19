@@ -9,6 +9,8 @@ export type Settings = {
   // Sheet and shape
   units: Units; width: number; height: number; dpi: number; margin: number
   shape: ShapeKind; invert: boolean
+  // How far veins stay inside the shape's edges and holes; 0 lets them reach the outline, as in 1.0.
+  clearance: number
   // Attractors
   count: number; placement: Placement; seed: number
   // Growth. attraction 0 means no limit, as in Runions' leaves.
@@ -24,7 +26,7 @@ export type Settings = {
 
 export const DEFAULTS: Settings = {
   units: 'mm', width: 210, height: 297, dpi: 300, margin: 12,
-  shape: 'leaf', invert: false,
+  shape: 'leaf', invert: false, clearance: 0,
   count: 4000, placement: 'even', seed: 1,
   segment: 1, kill: 2, attraction: 0, loops: false,
   inertia: 0.25, wiggle: 0.1, pull: 0, pullMode: 'up',
@@ -52,6 +54,7 @@ const CHOICES = {
 } as const
 
 export const marginMax = (s: Pick<Settings, 'width' | 'height'>) => Math.min(s.width, s.height) / 4
+export const clearanceMax = (s: Pick<Settings, 'width' | 'height'>) => Math.min(s.width, s.height) / 8
 
 const clamp = (v: number, [lo, hi]: readonly [number, number]) => Math.min(hi, Math.max(lo, v))
 
@@ -71,6 +74,7 @@ export function sanitizeSettings(raw: unknown): Settings {
   for (const [key, range] of Object.entries(LIMITS)) out[key] = clamp(out[key] as number, range)
   s.count = Math.round(s.count); s.seed = Math.round(s.seed); s.leafSteps = Math.round(s.leafSteps); s.speed = Math.round(s.speed)
   s.margin = clamp(s.margin, [0, marginMax(s)])
+  s.clearance = clamp(s.clearance, [0, clearanceMax(s)])
   for (const key of ['veinColor', 'background'] as const) if (!/^#[0-9a-f]{6}$/i.test(s[key])) s[key] = DEFAULTS[key]
   return s
 }
@@ -80,7 +84,7 @@ export function growthParams(s: Settings): GrowthParams {
   return {
     segment: s.segment, kill: s.kill, attraction: s.attraction, topology: s.loops ? 'closed' : 'open',
     inertia: s.inertia, wiggle: s.wiggle, pull: s.pull, pullMode: s.pullMode,
-    crowd: s.apart ? 0.45 : 0, leafSteps: s.leafGrowth ? s.leafSteps : 0,
+    crowd: s.apart ? 0.45 : 0, clearance: s.clearance, leafSteps: s.leafGrowth ? s.leafSteps : 0,
     minLoop: 8, maxPoints: 400_000, seed: s.seed,
   }
 }

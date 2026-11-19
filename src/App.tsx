@@ -24,9 +24,11 @@ import { designSvg } from './lib/svgExport'
 import { readSvgDrawing, SvgShapeError } from './lib/svgImport'
 import { formatLength, pixelSize, toUnits, trimZeros, UNIT_LABEL } from './lib/units'
 import { useVeins, type Status } from './useVeins'
+import { version } from '../package.json'
 
 type TabId = 'grow' | 'shape' | 'style' | 'file'
-const APP_VERSION = '1.0.0'
+// Written into project files; it comes from package.json, so it moves with every release.
+const APP_VERSION = version
 const SESSION_KEY = 'vessel-studio:session'
 const SESSION_UNSAVED_KEY = 'vessel-studio:session-unsaved'
 const QUICK_START_KEY = 'vessel-studio:quick-start-dismissed'
@@ -191,8 +193,8 @@ export function App() {
       const units = drawing.units === 'illustrator' ? 'pt' : cur.units
       const width = formatLength(strokes.width, units, cur.dpi, true)
       // Reading outlined strokes as lines is what was meant, so it's said plainly, not as a warning.
-      const merged = strokes.pairs === 1 ? `Its line is an outlined stroke, a band ${width} wide, so the band was read as one line. Veins grow up to it, never into it.`
-        : strokes.pairs > 1 ? `Its ${strokes.pairs} lines are outlined strokes, bands ${width} wide, so each band was read as one line. Veins grow up to them, never into them.` : ''
+      const merged = strokes.pairs === 1 ? `Its line is an outlined stroke, a band ${width} wide, so the band was read as one line. Veins grow up to it, never into it; Edge clearance keeps them further off.`
+        : strokes.pairs > 1 ? `Its ${strokes.pairs} lines are outlined strokes, bands ${width} wide, so each band was read as one line. Veins grow up to them, never into them; Edge clearance keeps them further off.` : ''
       const warnings = [
         drawing.fromClip ? `${file.name} is a picture, so the outline of its clipping mask is the shape.` : '',
         open ? `${open} open ${open === 1 ? 'path was' : 'paths were'} left out: only closed shapes count.` : '',
@@ -351,7 +353,12 @@ export function App() {
     <TooltipLayer />
     <div className="stage">
       <Stage scene={scene} settings={s} roots={design.roots} region={region} tool={tool} frameRef={frameRef} controlRef={stageRef}
-        onAddRoot={(x, y) => { model.addRoot(x, y); setStatus({ text: stats.step > 0 ? 'Added a root: it grows a vein of its own. Undo removes it.' : 'Added a root.' }) }}
+        onAddRoot={(x, y, moved) => {
+          model.addRoot(x, y)
+          const where = moved === 'outside' ? ' That point was outside the shape, so the root went to the nearest point inside.'
+            : moved === 'clearance' ? ' It was moved in from the edge, to keep the edge clearance.' : ''
+          setStatus({ text: `${stats.step > 0 ? 'Added a root: it grows a vein of its own. Undo removes it.' : 'Added a root.'}${where}` })
+        }}
         onMoveRoot={moveRoot} onRemoveRoot={removeRoot} onZoom={setZoom} onNotice={text => setStatus({ text })}
         onSpaceTap={() => { if (!pending && !showHelp) toggleGrow() }} />
     </div>

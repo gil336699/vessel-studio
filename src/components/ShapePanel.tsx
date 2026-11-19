@@ -1,7 +1,7 @@
 import { memo } from 'react'
 import type { Imported, RootPlacement } from '../lib/design'
 import { matchPreset, presetSize, SHEET_PRESETS } from '../lib/presets'
-import { LIMITS, marginMax, type Settings } from '../lib/settings'
+import { clearanceMax, LIMITS, marginMax, type Settings } from '../lib/settings'
 import { formatLength, pixelSize, type Units } from '../lib/units'
 import type { ShapeKind } from '../veins/shapes'
 import { Button, LengthField, NumberField, Section, Segmented, SwitchField, type Option } from './Controls'
@@ -78,6 +78,9 @@ export const ShapePanel = memo(function ShapePanel({ s, imported, rootCount, cha
       <LengthField label="Margin" mm={s.margin} min={0} max={marginMax(s)} units={s.units} dpi={s.dpi}
         unavailable={s.shape === 'imported' && 'An imported shape keeps its own position on its page.'}
         tip="Space between the sheet’s edge and the shape." onChange={margin => change({ margin }, 'margin')} />
+      <LengthField label="Edge clearance" mm={s.clearance} min={0} max={clearanceMax(s)} units={s.units} dpi={s.dpi}
+        tip="How far vein centre lines stay inside the shape’s edges and holes. 0 lets veins reach the outline, as in a real leaf. For a clear gap to a drawn outline or a cut line, use more than half the widest vein near the edge. Changing it places the attractors again."
+        onChange={clearance => change({ clearance }, 'clearance')} />
       <SwitchField label="Grow outside the shape" checked={s.invert}
         tip="Grow in the sheet around the shape instead, so veins wrap round it as an obstacle." onChange={invert => change({ invert }, 'invert')} />
       <div className="button-row">

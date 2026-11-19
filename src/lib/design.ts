@@ -62,12 +62,16 @@ export function outlineFingerprint(imported: Imported | null): string {
 
 // Settings that decide where attractors go. A picture isn't part of it: choosing one places them again on its own.
 export function placementKey(s: Settings, imported: Imported | null): string {
-  return JSON.stringify([s.width, s.height, s.margin, s.shape, s.invert, s.count, s.placement, s.seed, s.shape === 'imported' ? outlineFingerprint(imported) : ''])
+  return JSON.stringify([s.width, s.height, s.margin, s.shape, s.invert, s.count, s.placement, s.seed, s.shape === 'imported' ? outlineFingerprint(imported) : '', s.clearance])
 }
 
 export function placeFor(s: Settings, region: Region, picture: DensityMap | null): { points: Float64Array; short: boolean } {
-  return placeAttractors(region, s.count, s.placement === 'picture' && !picture ? 'even' : s.placement, s.seed, picture)
+  return placeAttractors(region, s.count, s.placement === 'picture' && !picture ? 'even' : s.placement, s.seed, picture, s.clearance)
 }
+
+// How far inside the edges roots start: half a segment, so the first step can't cross an edge, and a little more
+// than the edge clearance, so their first step isn't refused.
+export const rootInset = (s: Pick<Settings, 'segment' | 'clearance'>): number => Math.max(0.01, s.segment * 0.5, s.clearance > 0 ? s.clearance * 1.01 : 0)
 
 // Where roots go: the shape's own start (a leaf's base, an ellipse's centre), the bottom middle, the centre,
 // a row along the bottom (parallel veins, as in grass), or spaced round the edge (veins growing inward).
@@ -75,7 +79,7 @@ export type RootPlacement = 'shape' | 'base' | 'centre' | 'row' | 'edge'
 
 // The shape's own start points, moved inside it if needed.
 export function startRoots(s: Settings, region: Region, placement: RootPlacement = 'shape'): Vec[] {
-  const inset = Math.max(0.01, s.segment * 0.5)
+  const inset = rootInset(s)
   const [x0, y0, x1, y1] = region.box
   const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2
   let wanted: Vec[]
@@ -168,13 +172,13 @@ export function planChange(cur: Design, patch: Partial<Settings>, imported: Impo
 }
 
 // Settings that decide the shape or where attractors go; changing one starts the growth again.
-export const PLACEMENT_KEYS: (keyof Settings)[] = ['width', 'height', 'margin', 'shape', 'invert', 'count', 'placement', 'seed']
+export const PLACEMENT_KEYS: (keyof Settings)[] = ['width', 'height', 'margin', 'shape', 'invert', 'clearance', 'count', 'placement', 'seed']
 // Settings the worker uses while it grows; they apply live.
 export const GROWTH_KEYS: (keyof Settings)[] = ['segment', 'kill', 'attraction', 'loops', 'inertia', 'wiggle', 'pull', 'pullMode', 'apart', 'leafGrowth', 'leafSteps']
 
 // Roots still inside a changed shape, moved in if needed; the shape's own start if none are left.
 export function rootsFor(s: Settings, region: Region, roots: Vec[]): Vec[] {
-  const inset = Math.max(0.01, s.segment * 0.5)
+  const inset = rootInset(s)
   const kept = roots.map(([x, y]) => region.nearestInside(x, y, inset)).filter((p): p is Vec => p !== null)
   return kept.length ? kept : startRoots(s, region)
 }

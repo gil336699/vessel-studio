@@ -192,7 +192,7 @@ export function useVeins(initial: () => { design: Design; saved: boolean }, setS
         load(next)
         const placed = next.attractors.length / 2
         if (noPicture) statusRef.current({ text: 'No picture is loaded (projects don’t keep it), so the attractors were placed evenly. Choose the picture again to place them from it.', warning: true })
-        else if (short) statusRef.current({ text: `Only ${placed.toLocaleString()} of ${next.settings.count.toLocaleString()} attractors fit${next.settings.placement === 'picture' ? ': the picture is too pale for more. Use a darker picture or fewer attractors.' : ' in this shape. Use fewer, or a larger shape.'}`, warning: true })
+        else if (short) statusRef.current({ text: `Only ${placed.toLocaleString()} of ${next.settings.count.toLocaleString()} attractors fit${next.settings.placement === 'picture' ? ': the picture is too pale for more. Use a darker picture or fewer attractors.' : next.settings.clearance > 0 ? ' in this shape, clear of its edges. Use fewer, a smaller edge clearance, or a larger shape.' : ' in this shape. Use fewer, or a larger shape.'}`, warning: true })
         else if (hasGrown(cur) && !opts.quiet) statusRef.current({ text: 'The veins started again for the new shape or attractors. Undo brings them back.' })
         return
       }

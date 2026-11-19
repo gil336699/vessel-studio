@@ -1,5 +1,11 @@
 # Vessel Studio Changelog
 
+## 1.1.0 2026-11-18
+
+- **Edge clearance.** A new setting on the Shape tab keeps veins a set distance inside the shape's edges and holes, in mm, in or pt. Every vein, loop join, attractor and root keeps it, so vein centre lines stay that far from a drawn outline or a cut line; for a clear gap, use more than half the widest vein near the edge. Before, veins grew right up to the outline, as close as 0.002 mm. It's measured along each whole segment, so a vein can't cut close past a corner.
+- It's 0 by default, so new designs and saved projects grow exactly as in 1.0.0.
+- The note for an outline drawn as outlined strokes points to it.
+
 ## 1.0.0 2026-11-18
 
 The first version. It rebuilds Gil's four older space colonization pages as one app.

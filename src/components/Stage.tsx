@@ -1,6 +1,7 @@
 import { type RefObject, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Vec } from '../veins/geometry'
 import type { Region } from '../veins/region'
+import { rootInset } from '../lib/design'
 import { drawScene } from '../lib/render'
 import type { Scene } from '../lib/scene'
 import type { Settings } from '../lib/settings'
@@ -31,7 +32,8 @@ export function Stage({ scene, settings, roots, region, tool, frameRef, controlR
   tool: Tool
   frameRef: RefObject<HTMLDivElement | null>
   controlRef: RefObject<StageControls | null>
-  onAddRoot: (x: number, y: number) => void
+  // moved: the click was outside the shape, or inside its edge clearance, so the root went further in.
+  onAddRoot: (x: number, y: number, moved: 'outside' | 'clearance' | null) => void
   onMoveRoot: (index: number, x: number, y: number) => void
   onRemoveRoot: (index: number) => void
   onZoom: (zoom: number) => void
@@ -177,7 +179,7 @@ export function Stage({ scene, settings, roots, region, tool, frameRef, controlR
     roots.forEach(([rx, ry], i) => { const d = Math.hypot(rx - x, ry - y); if (d <= bestD) { bestD = d; best = i } })
     return best
   }
-  const inside = (x: number, y: number): Vec | null => region.nearestInside(x, y, Math.max(0.01, settings.segment * 0.5))
+  const inside = (x: number, y: number): Vec | null => region.nearestInside(x, y, rootInset(settings))
 
   const onPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     try { event.currentTarget.setPointerCapture(event.pointerId) } catch { /* the pointer already ended */ }
@@ -210,9 +212,9 @@ export function Stage({ scene, settings, roots, region, tool, frameRef, controlR
   const addRootAt = (clientX: number, clientY: number) => {
     const [x, y] = toWorld(clientX, clientY)
     const p = inside(x, y)
-    if (!p) { onNotice('Roots go inside the shape. Click inside it.'); return }
-    if (!region.contains(x, y)) onNotice('That point is outside the shape, so the root went to the nearest point inside.')
-    onAddRoot(p[0], p[1])
+    if (!p) { onNotice(settings.clearance > 0 ? 'Roots go inside the shape, clear of its edges by the edge clearance. Click further inside, or lower the clearance.' : 'Roots go inside the shape. Click inside it.'); return }
+    const moved = !region.contains(x, y) ? 'outside' : settings.clearance > 0 && (p[0] !== x || p[1] !== y) ? 'clearance' : null
+    onAddRoot(p[0], p[1], moved)
   }
 
   const onPointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
