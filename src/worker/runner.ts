@@ -136,7 +136,7 @@ export function createRunner(post: (message: FromRunner, transfer: Transferable[
     const e = engine
     if (!e) return
     switch (message.kind) {
-      case 'params': e.setParams(message.params); return
+      case 'params': e.setParams(message.params); dirty = true; flush(); return
       case 'speed': if (run) run.perBatch = Math.max(1, message.perBatch); return
       case 'play':
         if (run) clearTimeout(run.timer)

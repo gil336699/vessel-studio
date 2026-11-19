@@ -33,7 +33,8 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene, s: Settin
     // Group by drawn width, rounded to a twentieth of a pixel.
     const groups = new Map<number, typeof scene.veins>()
     for (const chain of scene.veins) {
-      const w = Math.round(Math.max(chain.width, minPx / k) * k * 20)
+      // At least a twentieth of a pixel: canvas ignores a line width of 0 and would keep the last one.
+      const w = Math.max(1, Math.round(Math.max(chain.width, minPx / k) * k * 20))
       const list = groups.get(w)
       if (list) list.push(chain); else groups.set(w, [chain])
     }

@@ -7,9 +7,10 @@ const MERGE_MS = 700
 export const emptyHistory = <T,>(): History<T> => ({ past: [], future: [], lastKey: null, lastTime: 0 })
 
 // Record the state before a change. Changes with the same key in quick succession merge into one step.
-export function record<T>(history: History<T>, before: T, key: string | null, now = Date.now()): History<T> {
+// limit: how many steps to keep; designs with very large growth keep fewer, to bound memory.
+export function record<T>(history: History<T>, before: T, key: string | null, now = Date.now(), limit = LIMIT): History<T> {
   if (key && key === history.lastKey && now - history.lastTime < MERGE_MS) return { ...history, future: [], lastTime: now }
-  return { past: [...history.past, before].slice(-LIMIT), future: [], lastKey: key, lastTime: now }
+  return { past: [...history.past, before].slice(-Math.max(1, limit)), future: [], lastKey: key, lastTime: now }
 }
 
 export function undo<T>(history: History<T>, current: T): { history: History<T>; state: T } | null {

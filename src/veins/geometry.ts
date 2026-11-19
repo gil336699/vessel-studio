@@ -70,16 +70,20 @@ export function rectRing(x0: number, y0: number, x1: number, y1: number): Ring {
   return [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
 }
 
-// Whether a single ring is convex (all turns the same way), which lets the engine skip line-of-sight tests.
+// Whether a single ring is convex, which lets the engine skip line-of-sight tests: every turn goes the same
+// way and they add up to one full turn. A star drawn point to point turns the same way at every corner too, but
+// twice round, so it isn't convex.
 export function isConvex(ring: Ring): boolean {
-  let sign = 0
+  let sign = 0, turning = 0
   for (let i = 0; i < ring.length; i++) {
     const a = ring[i], b = ring[(i + 1) % ring.length], c = ring[(i + 2) % ring.length]
-    const z = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0])
+    const ux = b[0] - a[0], uy = b[1] - a[1], vx = c[0] - b[0], vy = c[1] - b[1]
+    const z = ux * vy - uy * vx
+    turning += Math.atan2(z, ux * vx + uy * vy)
     if (Math.abs(z) < 1e-12) continue
     const s = Math.sign(z)
     if (sign === 0) sign = s
     else if (s !== sign) return false
   }
-  return true
+  return Math.abs(Math.abs(turning) - 2 * Math.PI) < 1e-6
 }

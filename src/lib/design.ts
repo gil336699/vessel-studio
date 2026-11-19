@@ -6,7 +6,8 @@ import type { Ring, Vec } from '../veins/geometry'
 import { Rng } from '../veins/random'
 import { Region } from '../veins/region'
 import { defaultRoots, invertRings, presetRings } from '../veins/shapes'
-import type { Settings } from './settings'
+import { fitPicture, type PictureData } from './picture'
+import { sanitizeSettings, type Settings } from './settings'
 import type { SizedBy } from './svgImport'
 
 // An outline read from an SVG, in millimetres on its file's page, which becomes the sheet.
@@ -40,14 +41,28 @@ export function engineState(g: Growth): EngineState {
   return { step: g.step, rng: g.rng, idle: g.idle, done: g.done, x: g.x, y: g.y, parent: g.parent, joins: g.joins, used: g.used }
 }
 
+// The shape's outlines in sheet millimetres. An imported outline scales with the sheet, keeping its place on the
+// page, as the sheet's width and height follow each other for imported shapes.
 export function shapeRings(s: Settings, imported: Imported | null): Ring[] {
-  const rings = s.shape === 'imported' ? (imported?.rings ?? []) : presetRings(s.shape, s.width, s.height, s.margin)
+  let rings: Ring[]
+  if (s.shape === 'imported') {
+    const kx = imported ? s.width / imported.width : 1, ky = imported ? s.height / imported.height : 1
+    rings = (imported?.rings ?? []).map(ring => (kx === 1 && ky === 1 ? ring : ring.map(([x, y]): Vec => [x * kx, y * ky])))
+  } else rings = presetRings(s.shape, s.width, s.height, s.margin)
   return s.invert ? invertRings(rings, s.width, s.height) : rings
 }
 
-// Settings that decide where attractors go.
-export function placementKey(s: Settings, imported: Imported | null, picture: string | null): string {
-  return JSON.stringify([s.width, s.height, s.margin, s.shape, s.invert, s.count, s.placement, s.seed, s.shape === 'imported' ? imported?.name ?? '' : '', s.placement === 'picture' ? picture ?? '' : ''])
+// A short fingerprint of an imported outline's points, so an edited file with the same name still counts as new.
+export function outlineFingerprint(imported: Imported | null): string {
+  if (!imported) return ''
+  let h = 2166136261, n = 0
+  for (const ring of imported.rings) for (const p of ring) for (const v of p) { h = Math.imul(h ^ (Math.round(v * 1000) | 0), 16777619); n++ }
+  return `${imported.rings.length}.${n}.${(h >>> 0).toString(36)}`
+}
+
+// Settings that decide where attractors go. A picture isn't part of it: choosing one places them again on its own.
+export function placementKey(s: Settings, imported: Imported | null): string {
+  return JSON.stringify([s.width, s.height, s.margin, s.shape, s.invert, s.count, s.placement, s.seed, s.shape === 'imported' ? outlineFingerprint(imported) : ''])
 }
 
 export function placeFor(s: Settings, region: Region, picture: DensityMap | null): { points: Float64Array; short: boolean } {
@@ -121,11 +136,35 @@ export function regionOf(s: Settings, imported: Imported | null): Region {
 }
 
 // A fresh design for these settings: the shape's roots, attractors placed, nothing grown.
-export function freshDesign(s: Settings, imported: Imported | null, picture: DensityMap | null, pictureName: string | null, roots?: Vec[]): Design {
+export function freshDesign(s: Settings, imported: Imported | null, picture: DensityMap | null, roots?: Vec[]): Design {
   const region = regionOf(s, imported)
   const placed = placeFor(s, region, picture)
   const start = roots ?? startRoots(s, region)
-  return { settings: s, imported, roots: start, attractors: placed.points, placedFor: placementKey(s, imported, pictureName), growth: startGrowth(start, placed.points.length / 2, s.seed) }
+  return { settings: s, imported, roots: start, attractors: placed.points, placedFor: placementKey(s, imported), growth: startGrowth(start, placed.points.length / 2, s.seed) }
+}
+
+// The design after a settings change. When the shape, the sheet or how attractors are placed changes, or a new
+// outline or picture arrives (`replace`), the attractors are placed again and the veins start over from the roots;
+// otherwise the veins stay and only the settings change. noPicture: Placement is Picture but no picture is
+// loaded (it isn't saved in projects), so the attractors were placed evenly instead.
+export type Planned = { next: Design; restarts: boolean; short: boolean; noPicture: boolean }
+
+export function planChange(cur: Design, patch: Partial<Settings>, imported: Imported | null, picture: PictureData | null, opts: { roots?: Vec[]; replace?: boolean } = {}): Planned {
+  const settings = sanitizeSettings({ ...cur.settings, ...patch })
+  const key = placementKey(settings, imported)
+  const newOutline = imported !== cur.imported
+  const replace = Boolean(opts.replace) || newOutline || key !== cur.placedFor
+  if (!replace && !opts.roots) return { next: { ...cur, settings, imported }, restarts: false, short: false, noPicture: false }
+  const region = regionOf(settings, imported)
+  const reshaped = (['width', 'height', 'margin', 'shape', 'invert'] as const).some(k => settings[k] !== cur.settings[k]) || newOutline
+  const newShape = settings.shape !== cur.settings.shape || settings.invert !== cur.settings.invert || newOutline
+  const scaled = cur.roots.map(([x, y]): Vec => [(x * settings.width) / cur.settings.width, (y * settings.height) / cur.settings.height])
+  const start = opts.roots ?? (newShape ? startRoots(settings, region) : rootsFor(settings, region, reshaped ? scaled : cur.roots))
+  const placed = replace ? placeFor(settings, region, picture ? fitPicture(picture, settings.width, settings.height) : null) : { points: cur.attractors, short: false }
+  return {
+    next: { settings, imported, roots: start, attractors: placed.points, placedFor: key, growth: startGrowth(start, placed.points.length / 2, settings.seed) },
+    restarts: true, short: placed.short, noPicture: replace && settings.placement === 'picture' && !picture,
+  }
 }
 
 // Settings that decide the shape or where attractors go; changing one starts the growth again.

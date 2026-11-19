@@ -10,7 +10,7 @@ import { readSvgDrawing } from './svgImport'
 import { designSvg } from './svgExport'
 
 function grown(s: Settings, imported: Imported | null = null, steps = 400) {
-  const d = freshDesign(s, imported, null, null)
+  const d = freshDesign(s, imported, null)
   const e = new Engine(regionOf(s, imported), d.attractors, growthParams(s), { roots: d.roots })
   for (let i = 0; i < steps && e.stepOnce(); i++) { /* grow */ }
   const net = { x: e.x, y: e.y, parent: e.parent, joins: e.joins, points: e.points }

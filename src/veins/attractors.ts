@@ -67,7 +67,9 @@ export function placeAttractors(region: Region, count: number, placement: Placem
     return null
   }
   const k = placement === 'random' ? 1 : CANDIDATES
-  for (let p = 0; p < n; p++) {
+  // A point whose samples all missed the shape is tried again; only many misses in a row mean there's no room
+  // left, as in a very pale picture.
+  for (let misses = 0; xs.length < n && misses < 60;) {
     let best: [number, number] | null = null, score = -1
     for (let c = 0; c < k; c++) {
       const q = sample()
@@ -77,7 +79,8 @@ export function placeAttractors(region: Region, count: number, placement: Placem
       const s = nearest(q[0], q[1]) * (density ? Math.sqrt(density(q[0], q[1])) : 1)
       if (s > score) { score = s; best = q }
     }
-    if (!best) break
+    if (!best) { misses++; continue }
+    misses = 0
     xs.push(best[0]); ys.push(best[1])
     const key = keyOf(Math.floor((best[0] - x0) / cell), Math.floor((best[1] - y0) / cell))
     const list = grid.get(key)
@@ -94,13 +97,13 @@ export function placeAttractors(region: Region, count: number, placement: Placem
 function gridPoints(region: Region, n: number, rng: Rng): Placed {
   const [x0, y0, x1, y1] = region.box
   let a = Math.sqrt(region.area / n)
-  for (let attempt = 0; attempt < 6; attempt++) {
+  for (let attempt = 0; attempt < 16; attempt++) {
     const pts: number[] = []
     for (let y = y0 + a / 2; y < y1; y += a) for (let x = x0 + a / 2; x < x1; x += a) {
       const px = x + (rng.next() - 0.5) * a, py = y + (rng.next() - 0.5) * a
       if (region.contains(px, py)) pts.push(px, py)
     }
-    if (pts.length / 2 >= n || attempt === 5) {
+    if (pts.length / 2 >= n || attempt === 15) {
       const count = pts.length / 2
       // Fisher–Yates, then keep the first n.
       const order = Array.from({ length: count }, (_, i) => i)
@@ -110,7 +113,7 @@ function gridPoints(region: Region, n: number, rng: Rng): Placed {
       keep.forEach((o, i) => { points[i * 2] = pts[o * 2]; points[i * 2 + 1] = pts[o * 2 + 1] })
       return { points, short: keep.length < n }
     }
-    a *= 0.94
+    a *= 0.9
   }
   return { points: new Float64Array(0), short: true }
 }

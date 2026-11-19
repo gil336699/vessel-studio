@@ -34,7 +34,11 @@ export class Region {
   constructor(rings: Ring[]) {
     this.rings = rings.filter(r => r.length >= 3)
     this.box = this.rings.length ? boxOf(this.rings) : [0, 0, 0, 0]
-    this.area = Math.abs(this.rings.reduce((s, r) => s + signedArea(r) * (Math.sign(signedArea(r)) === Math.sign(signedArea(this.rings[0])) ? 1 : -1), 0))
+    // Even-odd: a ring inside an odd number of other rings is a hole, so its area counts against the total.
+    this.area = Math.max(0, this.rings.reduce((sum, ring, i) => {
+      const depth = this.rings.reduce((k, other, j) => k + (j !== i && inRing(other, ring[0][0], ring[0][1]) ? 1 : 0), 0)
+      return sum + (depth % 2 ? -1 : 1) * Math.abs(signedArea(ring))
+    }, 0))
     this.convex = this.rings.length === 1 && isConvex(this.rings[0])
     const edges: number[] = []
     for (const ring of this.rings) for (let i = 0; i < ring.length; i++) {
@@ -186,6 +190,16 @@ export class Region {
       else { tMaxY += tDeltaY; j += stepY; if (j < 0 || j >= this.ny) return }
     }
   }
+}
+
+// Even-odd inside test against one ring.
+function inRing(ring: Ring, x: number, y: number): boolean {
+  let inside = false
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i], [xj, yj] = ring[j]
+    if ((yi > y) !== (yj > y) && x < xi + ((y - yi) * (xj - xi)) / (yj - yi)) inside = !inside
+  }
+  return inside
 }
 
 // Whether segments ab and cd meet: cross, touch, or overlap. Cautious on purpose (see geometry.segmentsCross).

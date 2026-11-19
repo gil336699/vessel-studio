@@ -78,4 +78,18 @@ describe('growth worker', () => {
     expect(next?.kind === 'stopped' && next.frame.gen).toBe(2)
     expect(next?.kind === 'stopped' && next.frame.step).toBe(1)
   })
+  it('sends a frame when growth settings change, so a finished growth that can carry on says so', () => {
+    const got: FromRunner[] = []
+    const runner = createRunner(message => got.push(message))
+    runner.handle({ kind: 'load', load: { ...load(4), params: { ...params, attraction: 1 } } })
+    runner.handle({ kind: 'play', run: 5, steps: null, perBatch: 50 })
+    for (let i = 0; i < 200 && !got.some(m => m.kind === 'stopped'); i++) { vi.advanceTimersByTime(20); runner.handle({ kind: 'ack' }) }
+    const stopped = got.find(m => m.kind === 'stopped')
+    expect(stopped?.kind === 'stopped' && stopped.frame.done).toBe('out-of-reach')
+    got.length = 0
+    runner.handle({ kind: 'ack' })
+    runner.handle({ kind: 'params', params: { ...params, attraction: 0 } })
+    const frame = got.find(m => m.kind === 'frame')
+    expect(frame?.kind === 'frame' && frame.frame.done).toBeNull()
+  })
 })

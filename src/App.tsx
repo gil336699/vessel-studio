@@ -16,6 +16,7 @@ import { pngProblem, renderPng } from './lib/pngExport'
 import { readPicture, PictureError, type PictureData } from './lib/picture'
 import { EXTENSION, parseProject, ProjectError, projectJson } from './lib/project'
 import { saveFile } from './lib/saveFile'
+import { keepSession, type Kept } from './lib/session'
 import { sceneContents, sceneOf } from './lib/scene'
 import { applyPreset, DEFAULTS, LIMITS, PRESETS, type PresetName, type Settings } from './lib/settings'
 import { designSvg } from './lib/svgExport'
@@ -34,6 +35,7 @@ const SESSION_LIMIT = 4_500_000
 const storage = {
   get: (key: string) => { try { return localStorage.getItem(key) } catch { return null } },
   set: (key: string, value: string) => { try { localStorage.setItem(key, value); return true } catch { return false } },
+  remove: (key: string) => { try { localStorage.removeItem(key) } catch { /* nothing to remove */ } },
 }
 
 // The last session comes back after a reload or a closed tab, so work is never lost to an accident.
@@ -42,7 +44,7 @@ function initialDesign(): { design: Design; saved: boolean; restored: boolean } 
   if (text) {
     try { return { design: parseProject(text), saved: storage.get(SESSION_UNSAVED_KEY) !== '1', restored: true } } catch { /* an unreadable session starts fresh */ }
   }
-  return { design: freshDesign(DEFAULTS, null, null, null), saved: true, restored: false }
+  return { design: freshDesign(DEFAULTS, null, null), saved: true, restored: false }
 }
 
 const baseName = (s: Settings, imported: Imported | null) => {
@@ -86,7 +88,7 @@ export function App() {
   const [showQuickStart, setShowQuickStart] = useState(() => storage.get(QUICK_START_KEY) !== '1')
   const [pending, setPending] = useState<Pending | null>(null)
   const [openError, setOpenError] = useState('')
-  const [sessionTooBig, setSessionTooBig] = useState(false)
+  const [sessionKept, setSessionKept] = useState<Kept>('kept')
   const frameRef = useRef<HTMLDivElement>(null)
   const stageRef = useRef<StageControls | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -110,11 +112,7 @@ export function App() {
   // Keep a copy of the session a moment after the last change, while nothing is growing.
   const { current, running, unsaved: unsavedNow } = model
   const keep = useCallback((unsavedFlag: boolean) => {
-    const text = projectJson(current(), APP_VERSION)
-    if (text.length > SESSION_LIMIT) { setSessionTooBig(true); return }
-    setSessionTooBig(false)
-    storage.set(SESSION_KEY, text)
-    storage.set(SESSION_UNSAVED_KEY, unsavedFlag ? '1' : '0')
+    setSessionKept(keepSession(storage, SESSION_KEY, SESSION_UNSAVED_KEY, projectJson(current(), APP_VERSION), unsavedFlag, SESSION_LIMIT))
   }, [current])
   useEffect(() => {
     if (running) return
@@ -139,7 +137,7 @@ export function App() {
   const newDesign = () => guard(unsaved, {
     title: 'Start a new design?', confirm: 'Discard and start new',
     body: 'Unsaved changes in the current design will be lost. Undo can still bring it back during this session.',
-    run: () => { void model.replace(freshDesign({ ...DEFAULTS, seed: randomSeed() }, null, null, null)); setStatus({ text: 'New design.' }) },
+    run: () => { void model.replace(freshDesign({ ...DEFAULTS, seed: randomSeed() }, null, null)); setStatus({ text: 'New design.' }) },
   })
 
   const openProject = () => guard(unsaved, {
@@ -365,7 +363,7 @@ export function App() {
       <TabPanel idBase="design" id="file" value={tab}>
         <FilePanel s={s} change={change} contents={contents} unsaved={unsaved} busy={busy} openError={openError} fromFile={s.shape === 'imported' && Boolean(design.imported)}
           onNew={newDesign} onOpen={openProject} onSave={() => void saveProject()} onExport={kind => void exportFile(kind)} />
-        {sessionTooBig && <p className="hint warning">This design is too big to keep in the browser between visits. Save it as a project file.</p>}
+        {sessionKept !== 'kept' && <p className="hint warning">{sessionKept === 'too-big' ? 'This design is too big to keep in the browser between visits.' : 'The browser won’t keep this design between visits.'} Save it as a project file.</p>}
       </TabPanel>
       <input ref={fileInput} type="file" accept=".json,application/json" hidden aria-label="Choose a project file" onChange={event => {
         const file = event.currentTarget.files?.[0]

@@ -9,7 +9,7 @@ const settings = applyPreset({ ...DEFAULTS, width: 120, height: 170, count: 1500
 
 describe('project files', () => {
   it('reopens a half-grown design that then grows exactly like an unbroken run', () => {
-    const d = freshDesign(settings, null, null, null)
+    const d = freshDesign(settings, null, null)
     const region = regionOf(d.settings, null)
     const whole = new Engine(region, d.attractors, growthParams(d.settings), { roots: d.roots })
     for (let i = 0; i < 180; i++) whole.stepOnce()

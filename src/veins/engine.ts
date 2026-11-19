@@ -344,10 +344,11 @@ export class Engine {
       if (this.appear[s] > step) { waiting++; continue }
       const d = Math.sqrt(this.best[s])
       if (P.topology === 'open') {
-        if (d < P.kill) { this.used[s] = USED; usedNow.push(s); continue }
+        const v = this.owner[s]
+        // Used up by a vein that reaches it; one just across an edge or a thin wall can't (it can't see it).
+        if (d < P.kill) { if (this.sees(v, s)) { this.used[s] = USED; usedNow.push(s) } continue }
         if (!(d < limit)) continue
         inReach++
-        const v = this.owner[s]
         if (!this.sees(v, s)) continue
         pulls(v, s, d)
       } else {
@@ -427,43 +428,51 @@ export class Engine {
       const j = this.addPoint(this.ax[s], this.ay[s], first)
       for (const v of others) { this.joinList.push(v); this.joinList.push(j); joined++ }
     }
-    this.live -= usedNow.length
     this.refreshNearest(from)
     const grew = this.xs.length - from
     this.step++
     this.idle = usedNow.length > 0 ? 0 : this.idle + 1
 
-    if (this.live === 0) this.done = 'reached'
+    if (this.live - usedNow.length === 0) this.done = 'reached'
     else if (this.xs.length >= P.maxPoints) this.done = 'cap'
     else if (waiting === 0 && ((grew === 0 && usedNow.length === 0) || this.idle >= this.idleLimit)) {
-      if (P.topology === 'closed') this.settleLoops()
-      this.done = inReach === 0 ? 'out-of-reach' : 'stalled'
+      if (P.topology === 'closed') for (const settled of this.settleLoops()) usedNow.push(settled)
+      this.done = this.live - usedNow.length === 0 ? 'reached' : inReach === 0 ? 'out-of-reach' : 'stalled'
     }
+    this.live -= usedNow.length
     return { grew, joined, used: usedNow }
   }
 
-  // Stuck with loops: each source joins the veins that did arrive, and the rest are dropped.
-  private settleLoops() {
+  // Stuck with loops: a source that veins did reach joins them there and is used up. One no vein reached stays,
+  // so the page can say it's out of reach, and a longer attraction distance can still grow to it. Only the kill
+  // distance round each source is searched, so this stays quick. Returns the sources it used up.
+  private settleLoops(): number[] {
+    const P = this.params, out: number[] = []
+    const from = this.xs.length
     for (let s = 0; s < this.ax.length; s++) {
-      if (this.used[s] !== LIVE) continue
-      const d = Math.sqrt(this.best[s])
-      const arrived = this.neighbourhood(s, d).filter(([, dv]) => dv < this.params.kill).map(([v]) => v)
-      this.used[s] = USED; this.live--
+      if (this.used[s] !== LIVE || this.appear[s] > this.step) continue
+      if (!(Math.sqrt(this.best[s]) < P.kill)) continue
+      const arrived = this.neighbourhood(s, 0, P.kill).map(([v]) => v)
+      if (!arrived.length) continue
+      this.used[s] = USED; out.push(s)
       if (arrived.length < 2) continue
-      const others = arrived.slice(1).filter(v => this.treeGap(v, arrived[0], this.params.minLoop) > this.params.minLoop)
+      const others = arrived.slice(1).filter(v => this.treeGap(v, arrived[0], P.minLoop) > P.minLoop)
       if (!others.length) continue
       const j = this.addPoint(this.ax[s], this.ay[s], arrived[0])
       for (const v of others) { this.joinList.push(v); this.joinList.push(j) }
     }
+    if (this.xs.length > from) this.refreshNearest(from)
+    return out
   }
 
   // The relative neighbourhood of source s among the vein points it can see: v counts unless some u is nearer
-  // the source than v and nearer v than the source is (Runions 2005, Eq. 2). Nearest first.
-  private neighbourhood(s: number, nearest: number): [number, number][] {
+  // the source than v and nearer v than the source is (Runions 2005, Eq. 2). Nearest first. `within` limits
+  // the search to that distance instead of one set by the nearest vein point.
+  private neighbourhood(s: number, nearest: number, within?: number): [number, number][] {
     const P = this.params, qx = this.ax[s], qy = this.ay[s]
-    const reach = Math.min(P.attraction > 0 ? P.attraction : Infinity, 2.5 * nearest + 2 * P.segment)
+    const reach = within ?? Math.min(P.attraction > 0 ? P.attraction : Infinity, 2.5 * nearest + 2 * P.segment)
     const found: [number, number][] = []
-    this.grid.near(qx, qy, Math.max(reach, nearest * 1.000001 + 1e-9), this.xs.data, this.ys.data, (id, d2) => { found.push([id, Math.sqrt(d2)]) })
+    this.grid.near(qx, qy, within ?? Math.max(reach, nearest * 1.000001 + 1e-9), this.xs.data, this.ys.data, (id, d2) => { found.push([id, Math.sqrt(d2)]) })
     found.sort((a, b) => a[1] - b[1] || a[0] - b[0])
     const xs = this.xs.data, ys = this.ys.data
     const out: [number, number][] = []

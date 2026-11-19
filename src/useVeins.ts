@@ -3,10 +3,10 @@
 // each frame adds to, for drawing, and copies it into the design when growth stops.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Vec } from './veins/geometry'
-import { engineState, GROWTH_KEYS, hasGrown, placeFor, placementKey, regionOf, rootsFor, shapeRings, startGrowth, startRoots, type Design, type Growth, type Imported } from './lib/design'
+import { engineState, GROWTH_KEYS, hasGrown, planChange, shapeRings, startGrowth, type Design, type Growth, type Imported } from './lib/design'
 import { emptyHistory, record, redo as redoStep, undo as undoStep, type History } from './lib/history'
-import { growthParams, sanitizeSettings, type Settings } from './lib/settings'
-import { fitPicture, type PictureData } from './lib/picture'
+import { growthParams, type Settings } from './lib/settings'
+import type { PictureData } from './lib/picture'
 import { GrowthClient } from './worker/client'
 import type { Frame, FromRunner } from './worker/runner'
 
@@ -110,7 +110,9 @@ export function useVeins(initial: () => { design: Design; saved: boolean }, setS
   }, [show, mirror])
   const syncHistory = () => { setCanUndo(history.current.past.length > 0); setCanRedo(history.current.future.length > 0) }
   const remember = useCallback((before: Design, key: string | null) => {
-    history.current = record(history.current, before, key)
+    // About 20 bytes a vein point per copy: past 30,000 points keep 20 steps, past 100,000 keep 8.
+    const points = before.growth.x.length
+    history.current = record(history.current, before, key, Date.now(), points > 100_000 ? 8 : points > 30_000 ? 20 : 60)
     syncHistory()
   }, [])
   const load = useCallback((d: Design) => {
@@ -177,34 +179,20 @@ export function useVeins(initial: () => { design: Design; saved: boolean }, setS
     setUnsaved(true)
   }, [halt, remember, current, commit, load])
 
-  // The design after a settings change: new attractors (and a fresh start) when the shape or their placement
-  // changes, otherwise the same veins with the new settings.
-  const plan = useCallback((cur: Design, patch: Partial<Settings>, imported: Imported | null, pic: Picture, roots?: Vec[]): { next: Design; restarts: boolean; short?: boolean } => {
-    const settings = sanitizeSettings({ ...cur.settings, ...patch })
-    const key = placementKey(settings, imported, pic?.name ?? null)
-    const reshaped = (['width', 'height', 'margin', 'shape', 'invert'] as const).some(k => settings[k] !== cur.settings[k]) || imported !== cur.imported
-    if (key === cur.placedFor && !roots) return { next: { ...cur, settings, imported }, restarts: false }
-    const region = regionOf(settings, imported)
-    const newShape = settings.shape !== cur.settings.shape || settings.invert !== cur.settings.invert || imported !== cur.imported
-    const scaled = cur.roots.map(([x, y]): Vec => [(x * settings.width) / cur.settings.width, (y * settings.height) / cur.settings.height])
-    const start = roots ?? (newShape ? startRoots(settings, region) : rootsFor(settings, region, reshaped ? scaled : cur.roots))
-    const placed = key === cur.placedFor ? { points: cur.attractors, short: false } : placeFor(settings, region, pic ? fitPicture(pic, settings.width, settings.height) : null)
-    return { next: { settings, imported, roots: start, attractors: placed.points, placedFor: key, growth: startGrowth(start, placed.points.length / 2, settings.seed) }, restarts: true, short: placed.short }
-  }, [])
-
   // A settings change. Ones that start the veins again wait for growth to stop; the rest apply live.
   const change = useCallback((patch: Partial<Settings>, key: string | null = null, opts: { imported?: Imported | null; roots?: Vec[]; quiet?: boolean } = {}) => {
     const apply = () => {
       const cur = current()
       const imported = opts.imported === undefined ? cur.imported : opts.imported
-      const { next, restarts, short } = plan(cur, patch, imported, pictureRef.current, opts.roots)
+      const { next, restarts, short, noPicture } = planChange(cur, patch, imported, pictureRef.current, { roots: opts.roots })
       remember(cur, key)
       setUnsaved(true)
       if (restarts) {
         commit(next)
         load(next)
         const placed = next.attractors.length / 2
-        if (short) statusRef.current({ text: `Only ${placed.toLocaleString()} of ${next.settings.count.toLocaleString()} attractors fit${next.settings.placement === 'picture' ? ': the picture is too pale for more. Use a darker picture or fewer attractors.' : ' in this shape. Use fewer, or a larger shape.'}`, warning: true })
+        if (noPicture) statusRef.current({ text: 'No picture is loaded (projects don’t keep it), so the attractors were placed evenly. Choose the picture again to place them from it.', warning: true })
+        else if (short) statusRef.current({ text: `Only ${placed.toLocaleString()} of ${next.settings.count.toLocaleString()} attractors fit${next.settings.placement === 'picture' ? ': the picture is too pale for more. Use a darker picture or fewer attractors.' : ' in this shape. Use fewer, or a larger shape.'}`, warning: true })
         else if (hasGrown(cur) && !opts.quiet) statusRef.current({ text: 'The veins started again for the new shape or attractors. Undo brings them back.' })
         return
       }
@@ -218,10 +206,10 @@ export function useVeins(initial: () => { design: Design; saved: boolean }, setS
       if (next.settings.speed !== cur.settings.speed) client.current?.speed(next.settings.speed)
     }
     const cur = current()
-    const restarts = plan(cur, patch, opts.imported === undefined ? cur.imported : opts.imported, pictureRef.current, opts.roots).restarts
+    const restarts = planChange(cur, patch, opts.imported === undefined ? cur.imported : opts.imported, pictureRef.current, { roots: opts.roots }).restarts
     if (restarts && runningRef.current) void halt().then(apply)
     else apply()
-  }, [current, plan, remember, commit, load, halt, show, mirror])
+  }, [current, remember, commit, load, halt, show, mirror])
 
   // Places attractors again for a new picture, when Placement is Picture.
   const pictureChanged = useCallback((pic: Picture) => {
@@ -230,13 +218,13 @@ export function useVeins(initial: () => { design: Design; saved: boolean }, setS
     if (cur.settings.placement !== 'picture') return
     void halt().then(() => {
       const c = current()
-      const { next } = plan(c, {}, c.imported, pic)
+      const { next } = planChange(c, {}, c.imported, pic, { replace: true })
       remember(c, null)
       commit(next)
       load(next)
       setUnsaved(true)
     })
-  }, [current, plan, remember, commit, load, halt])
+  }, [current, remember, commit, load, halt])
 
   const play = useCallback(() => {
     if (runningRef.current) return
