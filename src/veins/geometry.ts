@@ -18,6 +18,8 @@ export function ringLength(ring: Ring): number {
 
 export type Box = [number, number, number, number] // x0, y0, x1, y1
 
+export const boxesOverlap = (a: Box, b: Box): boolean => a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3]
+
 export function boxOf(rings: Ring[]): Box {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
   for (const ring of rings) for (const [x, y] of ring) {

@@ -5,7 +5,7 @@ import { Region } from '../veins/region'
 import { freshDesign, planChange, regionOf, shapeRings, type Design, type Imported } from './design'
 import type { PictureData } from './picture'
 import { parseProject, projectJson } from './project'
-import { applyPreset, DEFAULTS, growthParams } from './settings'
+import { applyPreset, DEFAULTS, growthParams, PRESETS } from './settings'
 
 // A design grown part way, as the page would hold it.
 function grown(d: Design, steps: number): Design {
@@ -48,6 +48,15 @@ describe('changes to a design', () => {
     const a = planned.next.attractors
     for (let i = 0; i < a.length; i += 2) expect(region.contains(a[i], a[i + 1])).toBe(true)
     for (const [x, y] of planned.next.roots) expect(region.contains(x, y)).toBe(true)
+  })
+
+  it('keeps an imported shape when a preset is picked, and a built-in shape takes the preset’s', () => {
+    for (const p of PRESETS) {
+      const s = applyPreset({ ...DEFAULTS, width: 381, height: 381, shape: 'imported' }, p.id)
+      expect(s.shape).toBe('imported')
+      expect(s.count).toBe(p.values.count)
+    }
+    expect(applyPreset({ ...DEFAULTS, shape: 'rect' }, 'arterial').shape).toBe('ellipse')
   })
 
   it('scales an imported outline with the sheet, keeping its place on the page', () => {

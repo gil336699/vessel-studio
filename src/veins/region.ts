@@ -2,7 +2,8 @@
 // (an obstacle veins grow round). Built once per shape. Inside tests use horizontal bands of edges, and
 // crossing tests walk a grid of edges along the segment, so an imported outline with thousands of points
 // stays fast.
-import { boxOf, isConvex, signedArea, toSegment, type Box, type Ring, type Vec } from './geometry'
+import { boxesOverlap, boxOf, isConvex, signedArea, toSegment, type Box, type Ring, type Vec } from './geometry'
+import { ringInside } from './strokes'
 
 export class Region {
   readonly rings: Ring[]
@@ -35,8 +36,10 @@ export class Region {
     this.rings = rings.filter(r => r.length >= 3)
     this.box = this.rings.length ? boxOf(this.rings) : [0, 0, 0, 0]
     // Even-odd: a ring inside an odd number of other rings is a hole, so its area counts against the total.
+    // Rings whose boxes don't meet can't be nested, which skips most pairs in a drawing of many outlines.
+    const boxes = this.rings.map(r => boxOf([r]))
     this.area = Math.max(0, this.rings.reduce((sum, ring, i) => {
-      const depth = this.rings.reduce((k, other, j) => k + (j !== i && inRing(other, ring[0][0], ring[0][1]) ? 1 : 0), 0)
+      const depth = this.rings.reduce((k, other, j) => k + (j !== i && boxesOverlap(boxes[i], boxes[j]) && ringInside(ring, other) ? 1 : 0), 0)
       return sum + (depth % 2 ? -1 : 1) * Math.abs(signedArea(ring))
     }, 0))
     this.convex = this.rings.length === 1 && isConvex(this.rings[0])
@@ -190,16 +193,6 @@ export class Region {
       else { tMaxY += tDeltaY; j += stepY; if (j < 0 || j >= this.ny) return }
     }
   }
-}
-
-// Even-odd inside test against one ring.
-function inRing(ring: Ring, x: number, y: number): boolean {
-  let inside = false
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const [xi, yi] = ring[i], [xj, yj] = ring[j]
-    if ((yi > y) !== (yj > y) && x < xi + ((y - yi) * (xj - xi)) / (yj - yi)) inside = !inside
-  }
-  return inside
 }
 
 // Whether segments ab and cd meet: cross, touch, or overlap. Cautious on purpose (see geometry.segmentsCross).

@@ -30,7 +30,7 @@ export const GrowPanel = memo(function GrowPanel({ s, change, onPreset, onShuffl
   const span = Math.max(s.width, s.height)
   const segMax = Math.max(1, span / 20), killMax = Math.max(2, span / 8), reachMax = Math.max(5, span / 2)
   return <>
-    <Section title="Preset" tip="Growth settings and a look, set together for this sheet’s size.">
+    <Section title="Preset" tip="Growth settings and a look, set together for this sheet’s size. An imported shape stays.">
       <div className="button-row preset-row">
         {PRESETS.map(p => <Button key={p.id} tip={p.tip} onClick={() => onPreset(p.id)}>{p.label}</Button>)}
       </div>

@@ -10,6 +10,7 @@ import { TabPanel, Tabs } from './components/Tabs'
 import { TooltipLayer } from './components/Tooltip'
 import type { Vec } from './veins/geometry'
 import { randomSeed } from './veins/random'
+import { mergeStrokeBands } from './veins/strokes'
 import { freshDesign, regionOf, shapeRings, startRoots, type Design, type Imported, type RootPlacement } from './lib/design'
 import { designDxf } from './lib/dxfExport'
 import { pngProblem, renderPng } from './lib/pngExport'
@@ -21,7 +22,7 @@ import { sceneContents, sceneOf } from './lib/scene'
 import { applyPreset, DEFAULTS, LIMITS, PRESETS, type PresetName, type Settings } from './lib/settings'
 import { designSvg } from './lib/svgExport'
 import { readSvgDrawing, SvgShapeError } from './lib/svgImport'
-import { pixelSize, toUnits, trimZeros, UNIT_LABEL } from './lib/units'
+import { formatLength, pixelSize, toUnits, trimZeros, UNIT_LABEL } from './lib/units'
 import { useVeins, type Status } from './useVeins'
 
 type TabId = 'grow' | 'shape' | 'style' | 'file'
@@ -62,12 +63,18 @@ function fitPage(width: number, height: number): number {
   return 1
 }
 
+// A share of a whole, which a handful in thousands doesn't round to 0.0 %.
+const share = (part: number, whole: number): string => {
+  const pct = (part / Math.max(1, whole)) * 100
+  return pct > 0 && pct < 0.05 ? 'under 0.1 %' : `${pct.toFixed(1)} %`
+}
+
 const DONE_TEXT = (done: string, live: number, total: number): string => {
   const left = `${live.toLocaleString()} ${live === 1 ? 'attractor was' : 'attractors were'}`
   switch (done) {
     case 'reached': return 'Grown: every attractor reached.'
-    case 'stalled': return live ? `Grown. ${left} left where no vein could grow (${((live / Math.max(1, total)) * 100).toFixed(1)} %).` : 'Grown.'
-    case 'out-of-reach': return `Stopped: the ${live.toLocaleString()} attractors left are beyond the attraction distance of every vein. Raise it, or turn its limit off.`
+    case 'stalled': return live ? `Grown. ${left} left where no vein could grow (${share(live, total)}).` : 'Grown.'
+    case 'out-of-reach': return `Stopped: ${live === 1 ? 'the attractor left is' : `the ${live.toLocaleString()} attractors left are`} beyond the attraction distance of every vein. Raise it, or turn its limit off.`
     case 'cap': return 'Stopped at 400,000 vein points, the most this page grows. Use fewer attractors or a longer segment.'
     case 'empty': return 'There are no roots. Pick the Roots tool and click inside the shape to add one.'
     default: return ''
@@ -173,18 +180,26 @@ export function App() {
       const k = fitPage(drawing.width, drawing.height)
       const closed = drawing.paths.filter(p => p.closed && p.points.length >= 3)
       if (!closed.length) { setStatus({ text: `${file.name} has no closed shapes to grow inside. Draw a closed path, such as an outline, and export it again.`, warning: true }); return }
-      const imported: Imported = { name: file.name, sized: drawing.units, width: drawing.width * k, height: drawing.height * k, rings: closed.map(p => p.points.map(([x, y]): Vec => [x * k, y * k])) }
+      // Lines saved as outlined strokes come in as thin bands; each is read as the line it was drawn as.
+      const strokes = mergeStrokeBands(closed.map(p => p.points.map(([x, y]): Vec => [x * k, y * k])))
+      const imported: Imported = { name: file.name, sized: drawing.units, width: drawing.width * k, height: drawing.height * k, rings: strokes.rings }
       const cur = model.current().settings
       change({ width: imported.width, height: imported.height, shape: 'imported', invert: false, units: drawing.units === 'illustrator' ? 'pt' : cur.units }, null, { imported })
       setTab('shape')
       const open = drawing.paths.length - closed.length
-      const notes = [
+      const outlines = imported.rings.length
+      const units = drawing.units === 'illustrator' ? 'pt' : cur.units
+      const width = formatLength(strokes.width, units, cur.dpi, true)
+      // Reading outlined strokes as lines is what was meant, so it's said plainly, not as a warning.
+      const merged = strokes.pairs === 1 ? `Its line is an outlined stroke, a band ${width} wide, so the band was read as one line. Veins grow up to it, never into it.`
+        : strokes.pairs > 1 ? `Its ${strokes.pairs} lines are outlined strokes, bands ${width} wide, so each band was read as one line. Veins grow up to them, never into them.` : ''
+      const warnings = [
         drawing.fromClip ? `${file.name} is a picture, so the outline of its clipping mask is the shape.` : '',
         open ? `${open} open ${open === 1 ? 'path was' : 'paths were'} left out: only closed shapes count.` : '',
         k !== 1 ? `The drawing was scaled to ${Math.round(k * 100)} % to fit the sheet limits.` : '',
         drawing.units === 'css' ? 'The file doesn’t say its size, so it was read at 96 per inch; check the width and height.' : '',
-      ].filter(Boolean).join(' ')
-      setStatus({ text: `Using ${file.name}: ${closed.length} ${closed.length === 1 ? 'outline' : 'outlines'}.${notes ? ` ${notes}` : ''}`, warning: Boolean(notes) })
+      ].filter(Boolean)
+      setStatus({ text: [`Using ${file.name}: ${outlines} ${outlines === 1 ? 'outline' : 'outlines'}.`, merged, ...warnings].filter(Boolean).join(' '), warning: warnings.length > 0 })
     } catch (error) {
       setStatus({ text: error instanceof SvgShapeError ? error.message : `${file.name} could not be read as an SVG.`, warning: true })
     }
@@ -266,7 +281,7 @@ export function App() {
     const p = PRESETS.find(item => item.id === name)!
     const roots = startRoots(next, regionOf(next, cur.imported), p.roots)
     change(next, 'preset', { roots, quiet: true })
-    setStatus({ text: `${p.label}: ${p.tip}` })
+    setStatus({ text: `${p.label}: ${p.tip}${next.shape === 'imported' ? ' Your imported shape stays.' : ''}` })
   }
   const placeRoots = (placement: RootPlacement) => {
     const cur = model.current()
@@ -327,7 +342,7 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey)
   })
 
-  const counts = `${stats.points.toLocaleString()} vein points · ${stats.live.toLocaleString()} attractors left · step ${stats.step.toLocaleString()}`
+  const counts = `${stats.points.toLocaleString()} vein ${stats.points === 1 ? 'point' : 'points'} · ${stats.live.toLocaleString()} ${stats.live === 1 ? 'attractor' : 'attractors'} left · step ${stats.step.toLocaleString()}`
   const doneText = stats.done ? DONE_TEXT(stats.done, stats.live, design.attractors.length / 2) : ''
   const statusText = status?.text ?? (model.stopping ? 'Stopping after the current step…'
     : model.running ? `Growing · ${counts}` : doneText ? `${doneText} ${counts}` : counts)

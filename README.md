@@ -49,7 +49,7 @@ GitHub Actions builds the app and publishes it to GitHub Pages on every push to 
 
 ## Workflow
 
-1. **Pick a preset** on the Grow tab: Leaf, Leaf with loops, Tree, Arterial, Neural or Capillary. Each sets the growth and a look, scaled to the sheet.
+1. **Pick a preset** on the Grow tab: Leaf, Leaf with loops, Tree, Arterial, Neural or Capillary. Each sets the growth and a look, scaled to the sheet. An imported shape stays.
 2. **Pick the shape** on the Shape tab, or import an SVG outline. Choose where veins start with the root buttons, or click with the Roots tool.
 3. **Grow:** press Space, or Grow. Growth settings (lengths, loops, feel) change live while the veins grow. Settings that move attractors start the veins again.
 4. **Style:** Murray widths or one even width, the tip and largest width in real units, and colours.
@@ -61,6 +61,19 @@ GitHub Actions builds the app and publishes it to GitHub Pages on every push to 
 - Open the exported SVG, copy it all, and use **Edit › Paste in Place** to line it up with the original artwork.
 - Each part is its own layer: Shape, Veins, Attractors and Roots.
 - Each vein between two forks is one path with its own stroke width, in real units.
+- **Outlined strokes.** A line saved with Outline Stroke or Expand comes in as a thin band: the line drawn twice, a stroke's width apart. Read as filled shapes, that leaves veins only the bands, about 1 mm wide. So two nested outlines that stay the same small distance apart all the way round (at most 3 % of the outline's size) are read as the one line they were. A boundary keeps its band's inner edge and a hole keeps its outer edge, so veins grow up to the drawn lines, never into them. Smaller outlines with the same band width are read the same way, and the status says how wide the bands were.
+
+Measured on Gil's five test shapes (2026-11-18, in `test-fixtures/`), each imported into the production build on its 381 mm (1080 pt) page and grown to the end with the Leaf and Leaf with loops presets:
+
+| Test shape | Outlines in the file → read | Bands | Area filled as drawn → as read | Open veins: points, attractors left | Loops: points, attractors left |
+| --- | --- | --- | --- | --- | --- |
+| 1-01, rounded triangle with a window | 4 → 2 | 2, 0.80 mm | 987 → 45,172 mm² | 3,608, 4 of 4,000 | 8,070, 2 of 4,500 |
+| 1-02, lens with a round hole | 4 → 2 | 2, 0.96 mm | 946 → 28,119 mm² | 2,501, 0 | 6,014, 1 |
+| 1-03, blob with a hooked slot | 4 → 2 | 2, 0.81 mm | 1,478 → 66,574 mm² | 4,817, 0 | 10,071, 3 |
+| 1-04, curled band, drawn as stroked lines | 2 | none | 34,440 mm² | 3,007, 0 | 6,986, 4 |
+| 1-05, branching outline | 1 | none | 46,979 mm² | 3,761, 0 | 8,259, 13 |
+
+Across the ten runs, 57,094 vein points and 63,170 segments and joins were checked against the shape: none is outside it, none crosses an edge, and none lies on one of Gil's drawn lines.
 
 ### With pen plotters, lasers, Fusion and 3D printers
 
@@ -79,7 +92,7 @@ GitHub Actions builds the app and publishes it to GitHub Pages on every push to 
 | Ellipse, Rectangle | The oval that fits the sheet, or the sheet itself, inside the margin. |
 | Ring | An ellipse with a hole a third of its size. The hole is an obstacle. |
 | Tree | A round crown on a narrow trunk. A vein climbs the trunk and branches in the crown, as Runions' trees do. |
-| Imported | Every closed path of an SVG, read even-odd, so a shape inside a shape is a hole. Open paths are left out, and the status says so. |
+| Imported | Every closed path of an SVG, read even-odd, so a shape inside a shape is a hole. Outlined strokes are read as the lines they were (see [With Illustrator](#with-illustrator)). Open paths are left out, and the status says so. The outline scales with the sheet. |
 | Grow outside the shape | The sheet with the shape as a hole, so veins wrap round it. |
 | Roots | Shape's own (a leaf's base, an ellipse's centre), Base, Centre, Row (along the bottom, for parallel veins), Edge (round the outline, growing in), or click with the Roots tool. Drag a root to move it, Alt-click it to remove it. |
 
@@ -153,14 +166,14 @@ Each step does three things.
 These rules make it fast and repeatable:
 
 - **A cached nearest point.** Each attractor's nearest vein point is cached and updated with only the new points of each step. That is exact, because vein points never move, and ties go to the older point as a full search would.
-- **Grids for the shape.** Inside tests use bands of edges and crossing tests walk a grid of edges, so imported outlines with thousands of points stay fast.
+- **Grids for the shape.** Inside tests use bands of edges and crossing tests walk a grid of edges, so imported outlines with thousands of points stay fast. Outlines whose boxes don't meet are never tested for nesting, so a drawing of 968 outlines is read in 52 ms (26 s when every pair was tested).
 - **The same result every time.** Everything is seeded, and the project file holds the whole state, the random generator's included.
 - **A worker.** The engine runs off the page and sends one frame at a time, after the page has drawn the last one. Frames carry only new points.
 
 **An honest note on its limits:**
 - It is a picture-making model, not a physiological one: Murray widths come from the number of vein ends each vein feeds, not from a flow solve. On a loop, a join takes the thinner end's width.
 - A vein can't grow round an obstacle to reach an attractor it can't see. It grows toward attractors it can see, and gets there in the end.
-- A handful of attractors can end up just beyond the kill distance of two veins, where no step is allowed. The status counts them: 0–7 of 2,500–4,000 in the presets.
+- A handful of attractors can end up just beyond the kill distance of two veins, where no step is allowed. The status counts them: at most 14 of 4,500 (0.3 %), in the presets and in Gil's test shapes.
 
 ## Known limits
 
@@ -174,10 +187,12 @@ Engine timings were measured in Node on this Mac (Apple silicon), best of 3 runs
 | Loops, A3, 20,000, 0.5 mm | 371 ms | 787 | 92,333 | 11,102 ms | 14.11 ms | 71 |
 | Capillary, A4, 5,000 | 82 ms | 140 | 17,949 | 1,240 ms | 8.86 ms | 113 |
 
-- **In the app** at the default Speed (3 steps a frame), growth is held to the screen: about 186 steps a second, so the A4 leaf takes 1.5 s. At Speed 40 the A3 leaf of 20,000 attractors took 2.06 s, as fast as the engine alone.
+- **In the app** at the default Speed (3 steps a frame), growth is held to the screen: about 186 steps a second, so the A4 leaf takes 1.5 s. At Speed 40 the A3 leaf of 20,000 attractors took 2.06 s and 2.12 s in two runs, as fast as the engine alone.
 - **In a background tab** growth carries on at about half the speed: 182 steps in 6 s at Speed 1, about 30 a second, against 60 in front.
 - **Size caps:** 20,000 attractors and 400,000 vein points. A session larger than about 4.5 MB isn't kept in the browser between visits, and the File tab says so; save a project instead.
 - **Loops are slower:** each source tests up to 48 nearby vein points for its neighbourhood.
+- **Very thin frames read as lines.** Two nested outlines less than 3 % of their size apart all the way round are read as one outlined stroke. A frame that thin can't hold veins anyway, and the status says when it happens.
+- **Veins reach the outline.** Vein centre lines stay inside the shape, but come as close as 0.002 mm to it, so a vein's stroke width can overlap a drawn line. There is no clearance setting yet.
 
 ## Rebuilt from Gil's older pages
 
@@ -200,13 +215,13 @@ npm run build     # type-check and build to dist/
 
 | Folder | What's in it |
 | --- | --- |
-| `src/veins/` | The engine, plain TypeScript: `engine.ts` (growth), `region.ts` (shapes, inside and crossing tests), `attractors.ts`, `network.ts` (widths, veins between forks, smoothing, counts), `shapes.ts`, `geometry.ts`, `random.ts`, with tests, including `parity.test.ts` against the old pages |
+| `src/veins/` | The engine, plain TypeScript: `engine.ts` (growth), `region.ts` (shapes, inside and crossing tests), `attractors.ts`, `network.ts` (widths, veins between forks, smoothing, counts), `strokes.ts` (outlined strokes read as lines), `shapes.ts`, `geometry.ts`, `random.ts`, with tests, including `parity.test.ts` against the old pages |
 | `src/worker/` | The growth worker and its frame protocol (`runner.ts`), with a test |
 | `src/lib/` | Settings and presets, the design, project files, SVG, DXF and PNG exports, SVG import (from Line Growth), units and the renderer |
 | `src/components/` | The panels, bars, stage, tooltips, dialogs and tabs |
 | `src/useVeins.ts` | The page's model: the design, the worker, undo and saving state |
 | `docs/` | `research.md` (the algorithm and sources), `rebuild.md` (the old pages), `plan.md` (the 1.0 plan) |
-| `test-fixtures/` | Gil's Illustrator pill outlines and a version 1 project file |
+| `test-fixtures/` | Gil's Illustrator pill outlines, his five TestingShapes (2026-11-18) and a version 1 project file |
 | `local/` | Not in git: QA scripts and probes |
 
 ## Sources and credits

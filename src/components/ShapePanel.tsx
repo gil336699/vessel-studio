@@ -81,7 +81,7 @@ export const ShapePanel = memo(function ShapePanel({ s, imported, rootCount, cha
       <SwitchField label="Grow outside the shape" checked={s.invert}
         tip="Grow in the sheet around the shape instead, so veins wrap round it as an obstacle." onChange={invert => change({ invert }, 'invert')} />
       <div className="button-row">
-        <Button tip="Use the closed shapes of an SVG, such as an outline from Illustrator, as the shape veins grow inside. Shapes inside shapes are holes. The sheet becomes the file’s page." onClick={onImport}>
+        <Button tip="Use the closed shapes of an SVG, such as an outline from Illustrator, as the shape veins grow inside. Shapes inside shapes are holes, and outlined strokes are read as the lines they were. The sheet becomes the file’s page." onClick={onImport}>
           <Icon name="import" />Import SVG shape…</Button>
       </div>
       {s.shape === 'imported' && imported && <p className="hint">

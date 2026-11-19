@@ -7,7 +7,9 @@ The first version. It rebuilds Gil's four older space colonization pages as one 
 - **Grow veins inside any shape.**
   - Attractors fill a leaf, an ellipse, a rectangle, a ring, a tree, or an outline imported from Illustrator, and veins grow toward them from the roots.
   - Holes are obstacles the veins go round.
-  - Six presets: Leaf, Leaf with loops, Tree, Arterial, Neural and Capillary. The last three are BioVessel Pro's.
+  - Six presets: Leaf, Leaf with loops, Tree, Arterial, Neural and Capillary. The last three are BioVessel Pro's. A preset keeps an imported shape: it sets how veins grow and look.
+- **Outlined strokes read as lines.** In an outline saved with Outline Stroke, each line is drawn twice, a stroke's width apart. Read as filled shapes, that left veins only a 1 mm band. Each band is now read as the line it was, so veins fill the shape up to the drawn lines, and the status says so.
+- **Imported outlines scale with the sheet** and keep their holes. A changed file imported under the same name is a new shape.
 - **Open or closed veins.** With Loops on, veins from several sides meet at an attractor and really join there, so loops are closed paths in the SVG and DXF, not near misses.
 - **Leaf growth.** The outline grows from the first root and attractors join in as it reaches them, so main veins form first.
 - **Murray widths at real size.** Veins thicken toward the roots by Murray's law, from a tip width in mm, in or pt, with the exponent from 1.5 to 4. Even width suits pen plotters.

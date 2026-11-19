@@ -108,7 +108,7 @@ export const PRESETS: { id: PresetName; label: string; tip: string; values: Pres
     values: { shape: 'ellipse', loops: true, leafGrowth: false, count: 5000, placement: 'even', inertia: 0.4, wiggle: 0.3, pull: 0, attraction: 0, widthRule: 'murray', exponent: 3, veinColor: '#c2185b' } },
 ]
 
-// A preset's settings for this sheet: its lengths follow the sheet's size.
+// A preset's settings for this sheet: its lengths follow the sheet's size, and an imported shape is kept.
 export function applyPreset(s: Settings, name: PresetName): Settings {
   const preset = PRESETS.find(p => p.id === name)
   if (!preset) return s
@@ -116,7 +116,9 @@ export function applyPreset(s: Settings, name: PresetName): Settings {
   const scaled: Partial<Settings> = { segment: round(1.0 * k), kill: round(2.0 * k), tipWidth: round(0.22 * k, 3), maxWidth: round(2.6 * k, 2) }
   if (name === 'loops' || name === 'capillary') scaled.kill = round(1.2 * k)
   if (name === 'tree') { scaled.kill = round(3 * k); scaled.maxWidth = round(5 * k, 2) }
-  return sanitizeSettings({ ...s, ...preset.values, ...scaled })
+  // A shape the user brought in stays: a preset sets how veins grow and look, not what they grow in.
+  const kept: Partial<Settings> = s.shape === 'imported' ? { shape: 'imported' } : {}
+  return sanitizeSettings({ ...s, ...preset.values, ...scaled, ...kept })
 }
 
 const round = (v: number, digits = 2) => Math.max(10 ** -digits, Number(v.toFixed(digits)))
