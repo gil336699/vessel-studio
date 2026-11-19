@@ -128,9 +128,11 @@ export function createRunner(post: (message: FromRunner, transfer: Transferable[
         const next = new Engine(region.empty ? null : region, load.attractors, load.params, load.state ? { state: load.state } : { roots: load.roots })
         gen = load.gen
         engine = next
-        // The page already has this state; the first frame it needs is the next change.
+        // The page already has this state; the first frame it needs is the next change. With leaf growth, it doesn't
+        // know how many attractors are still to appear, so an empty frame tells it.
         sentPoints = engine.points; sentJoins = engine.joins.length / 2; used = []
-        dirty = false; inFlight = false
+        dirty = engine.waiting > 0; inFlight = false
+        flush()
         return
       }
       case 'ack': inFlight = false; flush(); return

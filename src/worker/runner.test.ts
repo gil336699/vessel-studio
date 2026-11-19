@@ -92,4 +92,18 @@ describe('growth worker', () => {
     const frame = got.find(m => m.kind === 'frame')
     expect(frame?.kind === 'frame' && frame.frame.done).toBeNull()
   })
+
+  it('says how many attractors wait for the growing leaf as soon as a design is loaded, as after Undo or opening a file', () => {
+    const got: FromRunner[] = []
+    const runner = createRunner(message => got.push(message))
+    runner.handle({ kind: 'load', load: load(6) })
+    const frame = got.find(m => m.kind === 'frame')
+    expect(frame?.kind === 'frame' && frame.frame.waiting).toBeGreaterThan(0)
+    expect(frame?.kind === 'frame' && frame.frame.x.length).toBe(0)
+    // Without leaf growth nothing waits, and nothing need be sent.
+    got.length = 0
+    runner.handle({ kind: 'ack' })
+    runner.handle({ kind: 'load', load: { ...load(7), params: { ...params, leafSteps: 0 } } })
+    expect(got).toHaveLength(0)
+  })
 })

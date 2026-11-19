@@ -45,6 +45,36 @@ export function pointInRing(ring: Ring, x: number, y: number): boolean {
 
 export const boxesOverlap = (a: Box, b: Box): boolean => a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3]
 
+// Calls visit(i, j), i < j, for every two boxes that overlap, until it returns true. The boxes are sorted by
+// their left edges and swept left to right, so a drawing of thousands of small outlines never compares two that
+// are far apart. pad: how far each box reaches beyond its edges.
+export function eachOverlap(boxes: Box[], visit: (i: number, j: number) => boolean | void, pad: (i: number) => number = () => 0): void {
+  const n = boxes.length
+  const reach = Array.from({ length: n }, (_, i) => pad(i))
+  const order = Array.from({ length: n }, (_, i) => i).sort((a, b) => boxes[a][0] - reach[a] - (boxes[b][0] - reach[b]) || a - b)
+  let active: number[] = []
+  for (const i of order) {
+    const [x0, y0, x1, y1] = boxes[i], p = reach[i]
+    active = active.filter(j => boxes[j][2] + reach[j] >= x0 - p)
+    for (const j of active) {
+      const b = boxes[j], q = reach[j]
+      if (b[1] - q <= y1 + p && y0 - p <= b[3] + q && b[0] - q <= x1 + p && (i < j ? visit(i, j) : visit(j, i))) return
+    }
+    active.push(i)
+  }
+}
+
+// Whether a ring encloses any area. A bow tie or a figure of eight drawn as one path winds its two halves opposite
+// ways, so its signed area adds up to nothing: for a ring like that, points inside it are looked for instead.
+export function hasArea(ring: Ring): boolean {
+  if (ring.length < 3) return false
+  if (Math.abs(signedArea(ring)) > 1e-9) return true
+  const [x0, y0, x1, y1] = boxOf([ring])
+  if (!(x1 - x0 > 1e-9 && y1 - y0 > 1e-9)) return false
+  for (let j = 0; j < 32; j++) for (let i = 0; i < 32; i++) if (pointInRing(ring, x0 + ((i + 0.5) / 32) * (x1 - x0), y0 + ((j + 0.5) / 32) * (y1 - y0))) return true
+  return false
+}
+
 export function boxOf(rings: Ring[]): Box {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
   for (const ring of rings) for (const [x, y] of ring) {
@@ -54,26 +84,6 @@ export function boxOf(rings: Ring[]): Box {
     if (y > y1) y1 = y
   }
   return [x0, y0, x1, y1]
-}
-
-// Whether segments ab and cd meet: cross, touch, or overlap along a line. It is cautious on purpose: a growth
-// step that touches the edge, passes exactly through a corner of it, or slides along it counts as leaving.
-export function segmentsCross(ax: number, ay: number, bx: number, by: number, cx: number, cy: number, dx: number, dy: number): boolean {
-  const d1 = (dx - cx) * (ay - cy) - (dy - cy) * (ax - cx)
-  const d2 = (dx - cx) * (by - cy) - (dy - cy) * (bx - cx)
-  if ((d1 > 0 && d2 > 0) || (d1 < 0 && d2 < 0)) return false
-  const d3 = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax)
-  const d4 = (bx - ax) * (dy - ay) - (by - ay) * (dx - ax)
-  if ((d3 > 0 && d4 > 0) || (d3 < 0 && d4 < 0)) return false
-  // Collinear or touching: count it only when the segments overlap with some length, which a growth step
-  // sliding along an edge would do.
-  if (d1 === 0 && d2 === 0) {
-    const t = (v: number, a: number, b: number) => (b - a !== 0 ? (v - a) / (b - a) : 0)
-    const useX = Math.abs(bx - ax) >= Math.abs(by - ay)
-    const s0 = useX ? t(cx, ax, bx) : t(cy, ay, by), s1 = useX ? t(dx, ax, bx) : t(dy, ay, by)
-    return Math.max(Math.min(s0, s1), 0) < Math.min(Math.max(s0, s1), 1)
-  }
-  return d1 !== d2 && d3 !== d4
 }
 
 // Distance from p to segment ab, and the nearest point.

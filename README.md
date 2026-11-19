@@ -45,12 +45,13 @@ GitHub Actions builds the app and publishes it to GitHub Pages on every push to 
 - A control that can't be used says why. For example, Grow after growth has finished says what's next.
 - A three-step quick start shows on the first visit. The **?** button lists every shortcut and brings the quick start back.
 - Changes that start the veins again (a new shape, new attractors, moving a root) say so in the status, and Undo brings the veins back.
-- Opening a project, starting a new design or importing over grown veins asks first, in the app's own dialog.
+- Opening a project, starting a new design or importing over grown veins asks first, in the app's own dialog. So do moving or removing a root and Reset, once veins have grown, whether or not the design is saved.
+- A number typed past a limit is brought within it, and the status says so: a 4,200 mm sheet becomes 3,000 mm, the largest.
 
 ## Workflow
 
-1. **Pick a preset** on the Grow tab: Leaf, Leaf with loops, Tree, Arterial, Neural or Capillary. Each sets the growth and a look, scaled to the sheet. An imported shape stays.
-2. **Pick the shape** on the Shape tab, or import an SVG outline. Choose where veins start with the root buttons, or click with the Roots tool.
+1. **Pick the sheet and the shape** on the Shape tab, or import an SVG outline. Choose where veins start with the root buttons, or click with the Roots tool.
+2. **Pick a preset** on the Grow tab: Leaf, Leaf with loops, Tree, Arterial, Neural or Capillary. Each sets the growth and a look, with its lengths fitted to the sheet it's chosen on, so choose the sheet first; after a big change of sheet size, choose the preset again (the status says so). An imported shape and roots placed by hand stay.
 3. **Grow:** press Space, or Grow. Growth settings (lengths, loops, feel) change live while the veins grow. Settings that move attractors start the veins again.
 4. **Style:** Murray widths or one even width, the tip and largest width in real units, and colours.
 5. **Export** on the File tab, or save a project to carry on later exactly where it stopped.
@@ -58,14 +59,16 @@ GitHub Actions builds the app and publishes it to GitHub Pages on every push to 
 ### With Illustrator
 
 - An SVG from Illustrator has no stated size. Files from both Save As and Export As are recognised and read at 72 pt per inch, as Illustrator writes them, and the sheet becomes the page. Files saved with **Preserve Illustrator Editing Capabilities** work too. An Export As file drawn all in plain black can carry no sign of Illustrator; it's read at 96 per inch, the web's, and the Shape tab offers **Read at 72 points per inch** to fix it in one click.
-- **Outlines that cross,** such as two overlapping shapes that weren't joined, overlap as a hole, and the status says so: join them first with **Pathfinder › Unite**. A **frame** (an outline round a big opening) grows in its band, as drawn; to grow in the opening, import the opening's outline alone.
+- **Outlines that cross,** such as two overlapping shapes that weren't joined, overlap as a hole, and the status says so: join them first with **Pathfinder › Unite**. A **frame** (an outline whose openings take up most of it, one or several) grows in its band, as drawn; to grow in an opening, import that opening's outline alone. A frame round other shapes, as a badge's ring round its letters, grows in its band and in the shapes, and the status says so.
 - Importing Vessel Studio's own SVG reads back its shape and skips its attractor and root dots.
 - In **Export As › SVG**, tick **Use Artboards**, so the page is the artboard. Then open the exported SVG, copy it all, and use **Edit › Paste in Place** to line it up with the original artwork.
-- Each part is its own group: Shape, Veins, Attractors and Roots. Illustrator opens them as groups in one layer (Object › Ungroup, or Release to Layers, splits them); Inkscape opens them as layers.
+- Each part is its own group: shape (the outline), veins, attractors and roots. Illustrator opens them as groups in one layer (Object › Ungroup, or Release to Layers, splits them); Inkscape opens them as layers.
 - Each vein between two forks is one path with its own stroke width, in real units.
-- **Text, logos and maps** come in several parts: each letter, each island. Every part gets a root at its base, so all of it grows; a drawing of more than 500 parts roots the 500 largest, and says so. Live type has no outlines; use **Type › Create Outlines** first. Copies made with `<use>` and symbols are read; clipping masks aren't applied, and the status says when the file has them.
+- **Text, logos and maps** come in several parts: each letter, each island. Every part gets a root at its base, so all of it grows, and Row and Edge put roots in every part too; a drawing of more than 500 parts roots the 500 largest, and says so. A part too thin for a root at the segment length is counted in the status, with what to do. With Leaf growth, each part grows about its own root, so a pair of earrings grows alike. A bow tie or a figure of eight drawn as one path grows in both halves. Live type has no outlines; use **Type › Create Outlines** first. Copies made with `<use>` and symbols are read; clipping masks aren't applied, and the status says when the file has them.
 - **Art past the page,** as with a bleed, is trimmed to the sheet: veins grow only in what's on it, and the status says so.
-- **Outlined strokes.** A line saved with Outline Stroke or Expand comes in as a thin band: the line drawn twice, a stroke's width apart. Read as filled shapes, that leaves veins only the bands, about 1 mm wide. So two nested outlines that stay the same small distance apart all the way round (at most 3 % of the outline's size) are read as the one line they were. A boundary keeps its band's inner edge and a hole keeps its outer edge, so veins grow up to the drawn lines, never into them. Smaller outlines with the same band width are read the same way, and the status says how wide the bands were. To keep veins further off the lines, set **Edge clearance** on the Shape tab.
+- **Sheets are 10 mm to 3 m a side.** A larger drawing is scaled to fit, and the status says by how much and how much to enlarge the exports for full size: a 4.2 m facade comes in at 71 %, to be enlarged by 140 %. **Read at 72 points per inch** keeps to the same limits.
+- **Art off its page.** A file whose shapes all lie off the artboard says so, rather than importing an empty shape.
+- **Outlined strokes.** A line saved with Outline Stroke or Expand comes in as a thin band: the line drawn twice, a stroke's width apart, in one compound path. Read as filled shapes, that leaves veins only the bands, about 1 mm wide. So two nested outlines of the same path that stay the same small distance apart all the way round (at most 3 % of the outline's size) are read as the one line they were. Shapes drawn on their own, such as a panel set in a frame's opening with an even gap round it, stay shapes. A boundary keeps its band's inner edge and a hole keeps its outer edge, so veins grow up to the drawn lines, never into them. Smaller outlines with the same band width are read the same way, and the status says how wide the bands were. To keep veins further off the lines, set **Edge clearance** on the Shape tab.
 
 Measured on Gil's five test shapes (2026-11-18, in `test-fixtures/`), each imported into the production build on its 381 mm (1080 pt) page and grown to the end with the Leaf and Leaf with loops presets:
 
@@ -83,10 +86,10 @@ With **Edge clearance** typed into the Shape tab, and a second root clicked just
 
 | Test shape, preset | Edge clearance | Vein points | Attractors left | Nearest vein point to an edge | Segments or joins closer than the clearance |
 | --- | --- | --- | --- | --- | --- |
-| 1-01, Leaf | 3 mm | 3,380 | 0 of 4,000 | 3.03 mm | 0 |
-| 1-04, Leaf with loops | 2 mm | 6,375 (1,279 joins) | 1 of 4,500 | 2.006 mm | 0 |
+| 1-01, Leaf | 3 mm | 3,369 | 0 of 4,000 | 3.03 mm | 0 |
+| 1-04, Leaf with loops | 2 mm | 6,463 (1,336 joins) | 4 of 4,500 | 2.002 mm | 0 |
 
-With the clearance at 0, every preset and every run above grew exactly what 1.0.0 grew.
+With the clearance at 0, every preset and every run above grew exactly what 1.0.0 grew. With it, the roots are placed again for the clearance since 1.4.0, rather than moved in from where they were, so the two runs above grow a little differently from 1.3.0's.
 
 ### With pen plotters, lasers, Fusion and 3D printers
 
@@ -108,7 +111,7 @@ With the clearance at 0, every preset and every run above grew exactly what 1.0.
 | Imported | Every closed path of an SVG, read even-odd, so a shape inside a shape is a hole. Outlined strokes are read as the lines they were (see [With Illustrator](#with-illustrator)). Open paths are left out, and the status says so. The outline scales with the sheet. |
 | Grow outside the shape | The sheet with the shape as a hole, so veins wrap round it. |
 | Edge clearance | How far veins stay inside the shape's edges and holes, in real units. 0, the default, lets veins reach the outline, as in a real leaf. More keeps vein centre lines that far from a drawn outline or a cut line: every vein, loop join, attractor and root keeps it. For a clear gap, use more than half the widest vein near the edge. Changing it places the attractors again. |
-| Roots | Default (a leaf's base, an ellipse's centre), Base, Centre, Row (along the bottom, for parallel veins), Edge (round every part's outline, growing in), or click with the Roots tool. For an imported drawing or a shape grown outside, Default, Base and Centre put a root in every separate part, up to 500. Drag a root to move it; Alt-click it, or press and hold it on a touch screen, to remove it. Once veins have grown, moving or removing a root asks first. |
+| Roots | Default (a leaf's base, an ellipse's centre), Base, Centre, Row (along the bottom, for parallel veins), Edge (round every part's outline, growing in), or click with the Roots tool. For an imported drawing or a shape grown outside, every button puts roots in every separate part, up to 500. Roots placed with a button follow the shape: change the sheet, margin or edge clearance and they're placed again the same way. Roots placed by hand are moved in only as far as needed, each within its own part, and a preset keeps them. Drag a root to move it; Alt-click it, or press and hold it on a touch screen, to remove it. Once veins have grown, moving or removing a root asks first. |
 
 ### Attractors
 
@@ -141,7 +144,7 @@ Every placement gives exactly the count asked for, unless an edge clearance leav
 | Kill distance | How close a vein must come to use up an attractor. Smaller makes denser, finer veins (Runions 2005, Fig. 9). Keep it at least the segment length. |
 | Limit attraction distance | Off by default, as for Runions' leaves: every attractor pulls its nearest vein however far away. On, only veins within the distance feel it, and tips wander. |
 | Loops | Closed venation. An attractor pulls every vein point in its relative neighbourhood and waits until all of them arrive, then they join there with a real join, closing a loop. Veins less than 8 segments apart along the tree don't join, so no tiny bulbs. |
-| Leaf growth | The outline grows about the first root from 6 % to full size over the steps set. Attractors join in as it reaches them, so main veins form first (marginal growth, Runions 2005). Choosing Row or Edge roots turns it off, as the other roots would wait on the first. |
+| Leaf growth | The outline grows about the first root from 6 % to full size over the steps set; in a drawing of separate parts, each part grows about the first root in it. Attractors join in as it reaches them, so main veins form first (marginal growth, Runions 2005). Choosing Row or Edge roots turns it off, as the other roots would wait on the first. |
 | Keep veins apart | Refuses a new point within 0.45 segments of another vein. A refused open vein's step uses up the attractors it would have reached; with Loops, they wait for the other veins. Off grows as the older pages did. |
 | Keep heading | Blends a growing vein's step with its last heading, 0–95 %. Side branches always start toward their own attractors. |
 | Wiggle | A seeded wobble on each step, 0–1.5. |
@@ -156,14 +159,14 @@ Every placement gives exactly the count asked for, unless an edge clearance leav
 
 | Keys | Action |
 | --- | --- |
-| Space | Grow or pause (hold Space and drag to pan) |
+| Space | Grow or pause (hold Space and drag to pan). On a control reached with Tab, Space presses it; on a slider it always grows |
 | S | Grow one step |
 | R | Reset to the roots |
 | O, H | Roots and Pan tools |
 | Alt-click, or press and hold on a touch screen | Remove a root |
 | Scroll, pinch | Zoom |
 | +, −, F | Zoom in, out, fit |
-| 1, 2, 3, 4 | Veins, attractors, shape, roots |
+| 1, 2, 3, 4 | Show veins, attractors, outline, roots |
 | ⌘Z, ⇧⌘Z | Undo, redo |
 | ⌘S, ⌘O | Save, open project |
 | Esc | Close a dialog, or go back to Roots |
@@ -180,7 +183,7 @@ Each step does three things.
 These rules make it fast and repeatable:
 
 - **A cached nearest point.** Each attractor's nearest vein point is cached and updated with only the new points of each step. That is exact, because vein points never move, and ties go to the older point as a full search would.
-- **Grids for the shape.** Inside tests use bands of edges and crossing tests walk a grid of edges, so imported outlines with thousands of points stay fast. Outlines whose boxes don't meet are never tested for nesting, so a drawing of 968 outlines is read in 52 ms (26 s when every pair was tested).
+- **Grids for the shape.** Inside tests use bands of edges and crossing tests walk a grid of edges, so imported outlines with thousands of points stay fast. Outlines are sorted by position and swept, so only those whose boxes meet are tested for nesting, and the nearest edge to a point is found on the grid: a drawing of 968 outlines is read in 52 ms (26 s when every pair was tested), and 10,000 small letters with holes import in 1.9 s (32 s in 1.3.0).
 - **The same result every time.** Everything is seeded, and the project file holds the whole state, the random generator's included.
 - **A worker.** The engine runs off the page and sends one frame at a time, after the page has drawn the last one. Frames carry only new points.
 
@@ -206,7 +209,8 @@ Engine timings were measured in Node on this Mac (Apple silicon), best of 3 runs
 - **Size caps:** 20,000 attractors and 400,000 vein points. A session larger than about 4.5 MB isn't kept in the browser between visits, and the File tab says so; save a project instead.
 - **Loops are slower:** each source tests up to 48 nearby vein points for its neighbourhood. A long kill distance with short segments costs most: kill 20 mm with 1 mm segments takes about 7 ms a step; the extreme of kill 37 mm with 0.05 mm segments takes 0.1 s a step at first and up to about 1 s as the veins fill in.
 - **Placing attractors** happens on the page, not in the worker. Even places 20,000 in about 0.4 s; Edge, which measures each point's distance to the outline, 1–1.5 s on Gil's test shapes.
-- **Very thin frames read as lines.** Two nested outlines less than 3 % of their size apart all the way round are read as one outlined stroke. A frame that thin can't hold veins anyway, and the status says when it happens.
+- **Sheets are 10 mm to 3 m a side.** Larger work is scaled to fit, and exports come out at that scale; the status says how much to enlarge them.
+- **Very thin frames read as lines.** Two nested outlines of one compound path less than 3 % of their size apart all the way round are read as one outlined stroke. A frame that thin can't hold veins anyway, and the status says when it happens.
 - **Veins reach the outline unless Edge clearance is set.** Without it, vein centre lines come as close as 0.002 mm to the outline, so a vein's stroke width can overlap a drawn line. The clearance is for centre lines: to keep a vein's whole stroke clear, set it to at least half the widest vein that runs near the edge.
 
 ## Rebuilt from Gil's older pages
@@ -233,10 +237,10 @@ npm run build     # type-check and build to dist/
 | `src/veins/` | The engine, plain TypeScript: `engine.ts` (growth), `region.ts` (shapes, inside and crossing tests), `attractors.ts`, `network.ts` (widths, veins between forks, smoothing, counts), `strokes.ts` (outlined strokes read as lines), `shapes.ts`, `geometry.ts`, `random.ts`, with tests, including `parity.test.ts` against the old pages |
 | `src/worker/` | The growth worker and its frame protocol (`runner.ts`), with a test |
 | `src/lib/` | Settings and presets, the design, project files, SVG, DXF and PNG exports, SVG import (from Line Growth), units and the renderer |
-| `src/components/` | The panels, bars, stage, tooltips, dialogs and tabs |
+| `src/components/` | The panels, bars, stage, tooltips, dialogs and tabs, with tests of the slider, dialog and tooltip driven by pointer, touch and key events (happy-dom) |
 | `src/useVeins.ts` | The page's model: the design, the worker, undo and saving state |
 | `docs/` | `research.md` (the algorithm and sources), `rebuild.md` (the old pages), `plan.md` (the 1.0 plan) |
-| `test-fixtures/` | Gil's Illustrator pill outlines, his five TestingShapes (2026-11-18) and a version 1 project file |
+| `test-fixtures/` | Gil's Illustrator pill outlines, his five TestingShapes (2026-11-18), Illustrator exports made in QA (a word, a logo, earrings, a facade and its frame) and a version 1 project file |
 | `local/` | Not in git: QA scripts and probes |
 
 ## Sources and credits

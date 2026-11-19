@@ -3,9 +3,9 @@
 // each frame adds to, for drawing, and copies it into the design when growth stops.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Vec } from './veins/geometry'
-import { changeRestarts, type Design, engineState, type Growth, GROWTH_KEYS, hasGrown, type Imported, planChange, shapeRings, startGrowth } from './lib/design'
+import { changeRestarts, type Design, engineState, type Growth, GROWTH_KEYS, hasGrown, type Imported, planChange, type RootPlacement, shapeRings, startGrowth } from './lib/design'
 import { emptyHistory, record, redo as redoStep, undo as undoStep, type History } from './lib/history'
-import { growthParams, type Settings } from './lib/settings'
+import { growthParams, LIMITS, type Settings } from './lib/settings'
 import type { PictureData } from './lib/picture'
 import { GrowthClient } from './worker/client'
 import type { Frame, FromRunner } from './worker/runner'
@@ -95,6 +95,8 @@ export function useVeins(initial: () => { design: Design; saved: boolean }, setS
   const [canRedo, setCanRedo] = useState(false)
   const [unsaved, setUnsaved] = useState(!first.saved)
   const client = useRef<GrowthClient | null>(null)
+  // Why growth can't start, once the worker has failed to load too often: Grow says so instead of waiting on it.
+  const broken = useRef('')
   const statusRef = useRef(setStatus)
   useEffect(() => { statusRef.current = setStatus }, [setStatus])
   const pictureRef = useRef(picture)
@@ -146,7 +148,8 @@ export function useVeins(initial: () => { design: Design; saved: boolean }, setS
           statusRef.current({ text: `Growth stopped: ${message.message} Press Grow to carry on.`, warning: true })
         } else {
           client.current = null
-          statusRef.current({ text: `Growth can’t start: ${message.message} Reload the page to try again; your design is kept.`, warning: true })
+          broken.current = `Growth can’t start: ${message.message} Reload the page to try again; your design is kept.`
+          statusRef.current({ text: broken.current, warning: true })
         }
         return
       }
@@ -185,6 +188,8 @@ export function useVeins(initial: () => { design: Design; saved: boolean }, setS
   // Stops growing and waits for the worker's last veins, so nothing after it works from a stale copy.
   const halt = useCallback((): Promise<void> => {
     if (!runningRef.current) return Promise.resolve()
+    // No worker to stop: nothing is growing.
+    if (!client.current) { runningRef.current = false; setRunning(false); setStopping(false); return Promise.resolve() }
     setStopping(true)
     client.current?.stop()
     return new Promise(resolve => waiters.current.push(resolve))
@@ -198,12 +203,23 @@ export function useVeins(initial: () => { design: Design; saved: boolean }, setS
     setUnsaved(true)
   }, [halt, remember, current, commit, load])
 
-  // A settings change. Ones that start the veins again wait for growth to stop; the rest apply live.
-  const change = useCallback((patch: Partial<Settings>, key: string | null = null, opts: { imported?: Imported | null; roots?: Vec[]; quiet?: boolean } = {}) => {
-    const apply = () => {
+  // A settings change. Ones that start the veins again wait for growth to stop; the rest apply live. Resolves to
+  // the design after it.
+  const change = useCallback((patch: Partial<Settings>, key: string | null = null, opts: { imported?: Imported | null; roots?: Vec[]; rootsBy?: RootPlacement; quiet?: boolean } = {}): Promise<Design> => {
+    const apply = (): Design => {
       const cur = current()
       const imported = opts.imported === undefined ? cur.imported : opts.imported
-      const { next, restarts, short, noPicture } = planChange(cur, patch, imported, pictureRef.current, { roots: opts.roots })
+      const { next, restarts, short, noPicture } = planChange(cur, patch, imported, pictureRef.current, { roots: opts.roots, rootsBy: opts.rootsBy })
+      const wanted = { ...cur.settings, ...patch }
+      const L = (mm: number) => formatLength(mm, next.settings.units, next.settings.dpi)
+      // A sheet size past a limit is brought within it, as a typed 4,200 mm becomes the largest sheet: say so.
+      const capped = (['width', 'height'] as const).filter(k => patch[k] !== undefined && Math.abs(next.settings[k] - wanted[k]) > 1e-6)
+        .map(k => `${k === 'width' ? 'Width' : 'Height'} is ${L(next.settings[k])}, the ${next.settings[k] >= LIMITS[k][1] ? 'largest' : 'smallest'} a sheet can be.`)
+      // Nothing changes, as when a slider is let go where it started or a value is typed again: no undo step.
+      if (!restarts && (Object.keys(next.settings) as (keyof Settings)[]).every(k => next.settings[k] === cur.settings[k])) {
+        if (capped.length) statusRef.current({ text: capped.join(' ') })
+        return cur
+      }
       remember(cur, key)
       setUnsaved(true)
       if (restarts) {
@@ -211,17 +227,23 @@ export function useVeins(initial: () => { design: Design; saved: boolean }, setS
         load(next)
         const placed = next.attractors.length / 2
         // A smaller sheet caps the margin and the edge clearance; say when that cut what was set.
-        const wanted = { ...cur.settings, ...patch }
         const cut = ([['margin', 'Margin'], ['clearance', 'Edge clearance']] as const).filter(([k]) => next.settings[k] < wanted[k] - 1e-9)
-          .map(([k, name]) => `${name} is now ${formatLength(next.settings[k], next.settings.units, next.settings.dpi)}`)
-        if (cut.length) statusRef.current({ text: `${cut.join(' and ')}, the most this sheet allows.` })
+          .map(([k, name]) => `${name} is now ${L(next.settings[k])}`)
+        // A preset fits its lengths to the sheet it's chosen on; on a much larger or smaller sheet they stay as they
+        // were, so say how to fit them again.
+        const side = (x: Settings) => Math.min(x.width, x.height), ratio = side(next.settings) / side(cur.settings)
+        const resized = (patch.width !== undefined || patch.height !== undefined) && (ratio >= 1.5 || ratio <= 1 / 1.5)
+          ? `Lengths such as Segment stay ${L(next.settings.segment)}, so the veins are ${ratio > 1 ? 'finer' : 'coarser'} for this sheet: choose a preset again to fit them to it.` : ''
+        if (capped.length || cut.length) statusRef.current({ text: [...capped, cut.length ? `${cut.join(' and ')}, the most this sheet allows.` : '', resized].filter(Boolean).join(' ') })
         else if (noPicture) statusRef.current({ text: 'No picture is loaded (projects don’t keep it), so the attractors were placed evenly. Choose the picture again to place them from it.', warning: true })
         else if (short) statusRef.current({ text: `Only ${placed.toLocaleString()} of ${next.settings.count.toLocaleString()} attractors fit${next.settings.placement === 'picture' ? ': the picture is too pale for more. Use a darker picture or fewer attractors.' : next.settings.clearance > 0 ? ' in this shape, clear of its edges. Use fewer, a smaller edge clearance, or a larger shape.' : ' in this shape. Use fewer, or a larger shape.'}`, warning: true })
+        else if (resized) statusRef.current({ text: hasGrown(cur) && !opts.quiet ? `The veins started again for the new sheet. ${resized}` : resized })
         else if (hasGrown(cur) && !opts.quiet) statusRef.current({ text: 'The veins started again for the new shape or attractors. Undo brings them back.' })
-        return
+        return next
       }
       committed.current = { ...next, growth: cur.growth }
       setDesign(committed.current)
+      if (capped.length) statusRef.current({ text: capped.join(' ') })
       if (GROWTH_KEYS.some(k => next.settings[k] !== cur.settings[k])) {
         client.current?.params(growthParams(next.settings))
         // New growth settings may let finished growth carry on, as the engine allows: from where the veins are,
@@ -232,12 +254,13 @@ export function useVeins(initial: () => { design: Design; saved: boolean }, setS
         }
       }
       if (next.settings.speed !== cur.settings.speed) client.current?.speed(next.settings.speed)
+      return committed.current
     }
     const cur = current()
     // Asked without placing attractors: placing is the slow part, and apply() does it once.
     const restarts = changeRestarts(cur, patch, opts.imported === undefined ? cur.imported : opts.imported, { roots: opts.roots })
-    if (restarts && runningRef.current) void halt().then(apply)
-    else apply()
+    if (restarts && runningRef.current) return halt().then(apply)
+    return Promise.resolve(apply())
   }, [current, remember, commit, load, halt, show, mirror])
 
   // Places attractors again for a new picture, when Placement is Picture.
@@ -257,6 +280,7 @@ export function useVeins(initial: () => { design: Design; saved: boolean }, setS
 
   const play = useCallback(() => {
     if (runningRef.current) return
+    if (!client.current) { statusRef.current({ text: broken.current || 'Growth is starting up. Try again in a moment.', warning: true }); return }
     remember(current(), null)
     runningRef.current = true
     setRunning(true)
@@ -265,6 +289,7 @@ export function useVeins(initial: () => { design: Design; saved: boolean }, setS
 
   const step = useCallback(() => {
     if (runningRef.current) return
+    if (!client.current) { statusRef.current({ text: broken.current || 'Growth is starting up. Try again in a moment.', warning: true }); return }
     remember(current(), 'step')
     runningRef.current = true
     setRunning(true)
@@ -312,23 +337,24 @@ export function useVeins(initial: () => { design: Design; saved: boolean }, setS
     remember(cur, null)
     setUnsaved(true)
     if (hasGrown(cur) || runningRef.current) {
-      committed.current = { ...cur, roots: [...cur.roots, [x, y]] }
+      committed.current = { ...cur, roots: [...cur.roots, [x, y]], rootsBy: undefined }
       setDesign(committed.current)
       client.current?.root(x, y)
       return
     }
     const roots: Vec[] = [...cur.roots, [x, y]]
-    const next = { ...cur, roots, growth: startGrowth(roots, cur.attractors.length / 2, cur.settings.seed) }
+    const next = { ...cur, roots, rootsBy: undefined, growth: startGrowth(roots, cur.attractors.length / 2, cur.settings.seed) }
     commit(next)
     load(next)
   }, [current, remember, commit, load])
 
-  // message: what to say instead of the usual note, which only comes once veins have grown.
-  const setRoots = useCallback(async (roots: Vec[], key: string | null = null, message?: string) => {
+  // message: what to say instead of the usual note, which only comes once veins have grown. by: the rule that
+  // placed them, if one did.
+  const setRoots = useCallback(async (roots: Vec[], key: string | null = null, message?: string, by?: RootPlacement) => {
     await halt()
     const cur = current()
     remember(cur, key)
-    const next = { ...cur, roots, growth: startGrowth(roots, cur.attractors.length / 2, cur.settings.seed) }
+    const next = { ...cur, roots, rootsBy: by, growth: startGrowth(roots, cur.attractors.length / 2, cur.settings.seed) }
     commit(next)
     load(next)
     setUnsaved(true)

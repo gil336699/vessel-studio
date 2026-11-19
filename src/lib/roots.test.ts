@@ -2,9 +2,9 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { placeAttractors } from '../veins/attractors'
 import { Engine } from '../veins/engine'
-import { pointInRing, rectRing, signedArea, type Ring } from '../veins/geometry'
+import { pointInRing, rectRing, signedArea, type Ring, type Vec } from '../veins/geometry'
 import { Region } from '../veins/region'
-import { freshDesign, planChange, regionOf, startRoots, type Imported } from './design'
+import { freshDesign, MAX_PART_ROOTS, planChange, regionOf, startRoots, unrootedParts, type Imported } from './design'
 import { shapeFromDrawing } from './importShape'
 import { applyPreset, DEFAULTS, growthParams, type Settings } from './settings'
 import { readSvgDrawing } from './svgImport'
@@ -116,6 +116,29 @@ describe('roots in every part of a shape', () => {
     expect(leftOver(s, im)).toBeLessThan(0.02)
   })
 
+  it('roots each piece of the space left round a shape that cuts the sheet in two, grown outside it', () => {
+    // A bar right across a 200 × 100 mm sheet, from edge to edge: the space round it is two pieces, above and below,
+    // in one outline, the sheet's.
+    const im: Imported = { name: 'bar.svg', sized: 'file', width: 200, height: 100, rings: [rectRing(-10, 40, 210, 60)] }
+    const s = onSheet(im, { invert: true, leafGrowth: false })
+    const region = regionOf(s, im)
+    expect(region.parts()).toHaveLength(1)
+    const roots = startRoots(s, region)
+    expect(roots.some(([, y]) => y < 40)).toBe(true)
+    expect(roots.some(([, y]) => y > 60)).toBe(true)
+    expect(leftOver(s, im)).toBeLessThan(0.02)
+  })
+
+  it('keeps roots placed by hand in their letters when the sheet changes shape', () => {
+    // A long word on a square sheet is fitted and centred, so its roots move with it, not with the sheet.
+    const im = imported('illustrator-word.svg'), s = onSheet(im)
+    const d = { ...freshDesign(s, im, null), rootsBy: undefined }
+    const next = planChange(d, { width: 200, height: 200 }, im, null).next
+    const region = regionOf(next.settings, im)
+    const smallestFirst = [...region.parts()].sort((a, b) => Math.abs(signedArea(a)) - Math.abs(signedArea(b)))
+    expect(new Set(next.roots.map(([x, y]) => smallestFirst.findIndex(r => pointInRing(r, x, y)))).size).toBe(6)
+  })
+
   it('puts edge roots round every part, not just the first outline in the file', () => {
     const im = imported('illustrator-word.svg'), s = onSheet(im)
     const region = regionOf(s, im)
@@ -123,5 +146,96 @@ describe('roots in every part of a shape', () => {
     const parts = region.parts()
     const owners = new Set(roots.map(([x, y]) => parts.findIndex(r => pointInRing(r, x, y))))
     expect(owners.size).toBe(parts.length)
+  })
+})
+
+describe('roots that follow the shape', () => {
+  // The part a point is in: the smallest outline round it.
+  const owner = (region: ReturnType<typeof regionOf>, [x, y]: Vec) => {
+    const smallestFirst = [...region.parts()].sort((a, b) => Math.abs(signedArea(a)) - Math.abs(signedArea(b)))
+    return smallestFirst.findIndex(r => pointInRing(r, x, y))
+  }
+
+  it('roots every letter again when the edge clearance changes, and keeps a root placed by hand in its own letter', () => {
+    const im = imported('illustrator-word.svg'), s = onSheet(im)
+    const d = freshDesign(s, im, null)
+    // Default roots are placed again for the new clearance: all six letters keep one.
+    const next = planChange(d, { clearance: 6 }, im, null).next
+    const region = regionOf(next.settings, im)
+    expect(new Set(next.roots.map(p => owner(region, p))).size).toBe(6)
+    // Roots placed by hand are only moved in as needed, each within the letter it was in: none lands in another
+    // letter, though a letter too thin for the clearance loses its root.
+    const hand = planChange({ ...d, rootsBy: undefined }, { clearance: 6 }, im, null).next
+    const count = (roots: Vec[], r: ReturnType<typeof regionOf>) => { const n = new Map<number, number>(); for (const p of roots) n.set(owner(r, p), (n.get(owner(r, p)) ?? 0) + 1); return n }
+    const before = count(d.roots, regionOf(s, im)), after = count(hand.roots, region)
+    for (const [k, n] of after) expect(n).toBeLessThanOrEqual(before.get(k) ?? 0)
+  })
+
+  it('puts the root back at the leaf’s base when a margin is raised and lowered again', () => {
+    const s = applyPreset({ ...DEFAULTS }, 'leaf')
+    const d = freshDesign(s, null, null)
+    const wide = planChange(d, { margin: 40 }, null, null).next
+    const back = planChange(wide, { margin: s.margin }, null, null).next
+    expect(back.roots).toEqual(d.roots)
+    // The same for the edge clearance.
+    const clear = planChange(planChange(d, { clearance: 3 }, null, null).next, { clearance: 0 }, null, null).next
+    expect(clear.roots).toEqual(d.roots)
+  })
+
+  it('gives every part of a logo its own row of roots', () => {
+    const im = imported('illustrator-logo.svg'), s = onSheet(im)
+    const region = regionOf(s, im)
+    const roots = startRoots(s, region, 'row')
+    expect(new Set(roots.map(p => owner(region, p))).size).toBe(region.parts().length)
+    expect(unrootedParts(region.parts(), roots)).toBe(0)
+  })
+
+  it('caps the roots round the edges of a drawing of very many parts, as the other placements are', () => {
+    // 900 small squares: more than the 500 that get roots.
+    const rings: Ring[] = []
+    for (let i = 0; i < 30; i++) for (let j = 0; j < 30; j++) rings.push(rectRing(5 + i * 9.5, 5 + j * 9.5, 11 + i * 9.5, 11 + j * 9.5))
+    const im: Imported = { name: 'many.svg', sized: 'file', width: 300, height: 300, rings }
+    const s = onSheet(im)
+    const roots = startRoots(s, regionOf(s, im), 'edge')
+    expect(roots.length).toBeLessThanOrEqual(MAX_PART_ROOTS)
+    expect(roots.length).toBeGreaterThan(400)
+  })
+
+  it('counts the parts with no root, which can’t grow', () => {
+    const im = imported('illustrator-logo.svg'), s = onSheet(im)
+    const region = regionOf(s, im), roots = startRoots(s, region)
+    expect(unrootedParts(region.parts(), roots)).toBe(0)
+    expect(unrootedParts(region.parts(), roots.slice(2))).toBe(2)
+  })
+})
+
+describe('leaf growth in a shape of separate parts', () => {
+  it('grows each of a pair of earrings about its own root, so the two grow alike', () => {
+    // The designer's earrings, mirror images of each other, with the Leaf preset.
+    const im = imported('earrings.svg'), s = onSheet(im)
+    const region = regionOf(s, im), parts = region.parts()
+    const d = freshDesign(s, im, null)
+    expect(parts).toHaveLength(2)
+    const e = new Engine(region, d.attractors, growthParams(s), { roots: d.roots })
+    // When each earring's attractors appear as its outline grows: about the same, as each grows about its own root.
+    // Grown about the first earring's root, the second's came 32 steps later.
+    const median = (k: number) => {
+      const at: number[] = []
+      for (let i = 0; i < d.attractors.length; i += 2) if (pointInRing(parts[k], d.attractors[i], d.attractors[i + 1])) at.push(e.appear[i / 2])
+      return at.sort((a, b) => a - b)[Math.floor(at.length / 2)]
+    }
+    expect(Math.abs(median(0) - median(1))).toBeLessThan(0.05 * s.leafSteps)
+    // Their main veins, the longest way from the root to a tip, are as long as each other.
+    for (let i = 0; i < 4000 && !e.snapshot().done; i++) e.stepOnce()
+    const g = e.snapshot(), along = new Float64Array(g.x.length), longest = [0, 0]
+    for (let v = 0; v < g.x.length; v++) {
+      const p = g.parent[v]
+      if (p < 0) continue
+      along[v] = along[p] + Math.hypot(g.x[v] - g.x[p], g.y[v] - g.y[p])
+      const k = pointInRing(parts[0], g.x[v], g.y[v]) ? 0 : 1
+      longest[k] = Math.max(longest[k], along[v])
+    }
+    expect(Math.min(...longest) / Math.max(...longest)).toBeGreaterThan(0.95)
+    expect(g.done).toBe('reached')
   })
 })

@@ -21,7 +21,7 @@
 // points never move or vanish, so that is exact, and ties go to the older point, as a full search would.
 import type { Vec } from './geometry'
 import { Rng } from './random'
-import type { Region } from './region'
+import { partAt, partTest, type Region } from './region'
 
 export type Topology = 'open' | 'closed'
 export type PullMode = 'up' | 'down' | 'left' | 'right' | 'out'
@@ -151,8 +151,9 @@ export class Engine {
   done: StopReason | null = null
   idle = 0
   live: number
-  // Leaf growth centre: the first root.
+  // Leaf growth centre: the first root. With a shape in separate parts, each part grows about its own first root.
   private centre: Vec | null = null
+  private byPart = false
   // Scratch, reused every step.
   private pullX = new Float64Array(0)
   private pullY = new Float64Array(0)
@@ -228,7 +229,8 @@ export class Engine {
     this.addPoint(x, y, -1)
     this.refreshNearest(from)
     if (this.done) this.done = null
-    if (!this.centre) this.setLeafGrowth()
+    // A new root can be the first in its part, which then grows about it.
+    if (!this.centre || this.byPart) this.setLeafGrowth()
   }
 
   snapshot(): EngineState {
@@ -247,19 +249,42 @@ export class Engine {
   }
 
   // Leaf growth (Runions 2005, marginal growth): the outline grows from LEAF_START of its size to full size about
-  // the first root, and each attractor counts from the step the growing outline first holds it.
+  // the first root, and each attractor counts from the step the growing outline first holds it. A shape in separate
+  // parts, such as a pair of earrings or the letters of a word, grows each part about the first root in it, so each
+  // grows as a leaf of its own rather than sweeping in from the first root's side.
   private setLeafGrowth() {
     const T = this.params.leafSteps
     this.appear.fill(0)
-    if (!(T > 0) || !this.region || this.xs.length === 0) { this.centre = null; return }
+    if (!(T > 0) || !this.region || this.xs.length === 0) { this.centre = null; this.byPart = false; return }
     const c: Vec = [this.xs.data[0], this.ys.data[0]]
     this.centre = c
-    const inside = (i: number, s: number) => this.region!.contains(c[0] + (this.ax[i] - c[0]) / s, c[1] + (this.ay[i] - c[1]) / s)
-    for (let i = 0; i < this.ax.length; i++) {
+    const parts = this.region.parts()
+    this.byPart = parts.length > 1
+    // Where each attractor first shows in the outline grown about centre c, within the area `holds`.
+    const appear = (i: number, c: Vec, holds: (x: number, y: number) => boolean) => {
+      const inside = (s: number) => holds(c[0] + (this.ax[i] - c[0]) / s, c[1] + (this.ay[i] - c[1]) / s)
       let lo = LEAF_START, hi = 1
-      if (inside(i, lo)) { this.appear[i] = 0; continue }
-      for (let it = 0; it < 18; it++) { const mid = (lo + hi) / 2; if (inside(i, mid)) hi = mid; else lo = mid }
-      this.appear[i] = Math.ceil(((hi - LEAF_START) / (1 - LEAF_START)) * T)
+      if (inside(lo)) return 0
+      for (let it = 0; it < 18; it++) { const mid = (lo + hi) / 2; if (inside(mid)) hi = mid; else lo = mid }
+      return Math.ceil(((hi - LEAF_START) / (1 - LEAF_START)) * T)
+    }
+    if (!this.byPart) {
+      const holds = (x: number, y: number) => this.region!.contains(x, y)
+      for (let i = 0; i < this.ax.length; i++) this.appear[i] = appear(i, c, holds)
+      return
+    }
+    // The first root in each part is its centre; a part with no root has nothing to grow from.
+    const centres: (Vec | null)[] = parts.map(() => null)
+    for (let v = 0; v < this.xs.length; v++) {
+      if (this.parents.data[v] >= 0) continue
+      const k = partAt(parts, this.xs.data[v], this.ys.data[v])
+      if (k >= 0 && !centres[k]) centres[k] = [this.xs.data[v], this.ys.data[v]]
+    }
+    const tests = parts.map((_, k) => (centres[k] ? partTest(parts, k) : null))
+    for (let i = 0; i < this.ax.length; i++) {
+      const k = partAt(parts, this.ax[i], this.ay[i]), centre = k >= 0 ? centres[k] : null, test = k >= 0 ? tests[k] : null
+      if (!centre || !test) continue
+      this.appear[i] = appear(i, centre, (x, y) => test(x, y) && this.region!.contains(x, y))
     }
   }
 

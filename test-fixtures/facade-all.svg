@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 11905.51 8503.94">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: #5a5a5f;
+      }
+
+      .cls-2 {
+        fill: #d6cdbe;
+        stroke: #000;
+        stroke-miterlimit: 10;
+        stroke-width: .5px;
+      }
+    </style>
+  </defs>
+  <g id="Frame">
+    <path id="Facade_frame" data-name="Facade frame" class="cls-1" d="M9354.33,4535.43V283.46h2267.72v4251.97H9354.33ZM5669.29,8220.47V283.46h3401.58v7937.01H5669.29ZM283.46,8220.47V283.46h5102.37v7937.01H283.46ZM0,8503.94V0h11905.51v8503.94H0Z"/>
+  </g>
+  <g id="Panels">
+    <rect id="Panel_A" data-name="Panel A" class="cls-2" x="311.81" y="311.81" width="5045.67" height="7880.31"/>
+    <rect id="Panel_B" data-name="Panel B" class="cls-2" x="5697.64" y="311.81" width="3344.88" height="7880.31"/>
+    <rect id="Panel_C" data-name="Panel C" class="cls-2" x="9382.68" y="311.81" width="2211.02" height="4195.28"/>
+  </g>
+</svg>

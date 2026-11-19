@@ -10,7 +10,7 @@ import { TabPanel, Tabs } from './components/Tabs'
 import { TooltipLayer } from './components/Tooltip'
 import type { Vec } from './veins/geometry'
 import { randomSeed } from './veins/random'
-import { freshDesign, MAX_PART_ROOTS, regionOf, shapeRings, startRoots, type Design, type Imported, type RootPlacement } from './lib/design'
+import { fitToSheet, freshDesign, hasGrown, MAX_PART_ROOTS, partsOf, regionOf, rootsFor, shapeRings, startRoots, unrootedParts, type Design, type Imported, type RootPlacement } from './lib/design'
 import { designDxf } from './lib/dxfExport'
 import { pngProblem, renderPng } from './lib/pngExport'
 import { readPicture, PictureError, type PictureData } from './lib/picture'
@@ -26,6 +26,7 @@ import { formatLength, pixelSize, toUnits, trimZeros, UNIT_LABEL } from './lib/u
 import { useVeins, type Status } from './useVeins'
 import { version } from '../package.json'
 import { touchFirst } from './lib/touch'
+import { useMedia } from './useMedia'
 
 type TabId = 'grow' | 'shape' | 'style' | 'file'
 // Written into project files; it comes from package.json, so it moves with every release.
@@ -43,13 +44,21 @@ const storage = {
 }
 
 // The last session comes back after a reload or a closed tab, so work is never lost to an accident.
-function initialDesign(): { design: Design; saved: boolean; restored: boolean } {
+function initialDesign(): { design: Design; saved: boolean; restored: boolean; off: number } {
   const text = storage.get(SESSION_KEY)
   if (text) {
-    try { return { design: parseProject(text), saved: storage.get(SESSION_UNSAVED_KEY) !== '1', restored: true } } catch { /* an unreadable session starts fresh */ }
+    try {
+      const { design, off } = fitToSheet(parseProject(text))
+      return { design, saved: storage.get(SESSION_UNSAVED_KEY) !== '1' && !off, restored: true, off }
+    } catch { /* an unreadable session starts fresh */ }
   }
-  return { design: freshDesign(DEFAULTS, null, null), saved: true, restored: false }
+  return { design: freshDesign(DEFAULTS, null, null), saved: true, restored: false, off: 0 }
 }
+
+// What opening a project made before 1.3.0 did with attractors off the sheet, in words.
+const offSheet = (off: number, grown: boolean) => off
+  ? ` It was made before shapes were trimmed to the sheet: ${off.toLocaleString()} ${off === 1 ? 'attractor' : 'attractors'} off the sheet ${grown ? `${off === 1 ? 'was' : 'were'} set aside, as no vein can reach ${off === 1 ? 'it' : 'them'}` : `${off === 1 ? 'was' : 'were'} placed again on it`}.`
+  : ''
 
 const baseName = (s: Settings, imported: Imported | null) => {
   if (s.shape === 'imported' && imported) return `${imported.name.replace(/\.svg$/i, '')}-veins`
@@ -66,14 +75,14 @@ const share = (part: number, whole: number): string => {
 
 const SHAPE_NAME: Record<Settings['shape'], string> = { leaf: 'Leaf', ellipse: 'Ellipse', rect: 'Rectangle', ring: 'Ring', tree: 'Tree', imported: 'Imported' }
 
-const DONE_TEXT = (done: string, live: number, total: number, outside = false, parts = 1): string => {
+const DONE_TEXT = (done: string, live: number, total: number, outside = false, unrooted = 0): string => {
   const left = `${live.toLocaleString()} ${live === 1 ? 'attractor was' : 'attractors were'}`
   switch (done) {
     case 'reached': return 'Grown: every attractor reached.'
     case 'stalled': {
       if (!live) return 'Grown.'
       // In a shape of separate parts, a part with no root never grows: say what to do about it.
-      const hint = parts > 1 && live > 0.05 * total ? ' Parts with no root can’t grow: Default, under Roots on the Shape tab, puts one in each.' : ''
+      const hint = unrooted ? ` ${unrooted.toLocaleString()} ${unrooted === 1 ? 'part has' : 'parts have'} no root, so can’t grow: Default, under Roots on the Shape tab, puts one in each.` : ''
       return `Grown. ${left} left where no vein could grow (${share(live, total)}).${hint}`
     }
     case 'out-of-reach': return `Stopped: ${live === 1 ? 'the attractor left is' : `the ${live.toLocaleString()} attractors left are`} beyond the attraction distance of every vein. Raise the attraction distance, or turn its limit off.`
@@ -85,7 +94,7 @@ const DONE_TEXT = (done: string, live: number, total: number, outside = false, p
 
 export function App() {
   const [first] = useState(initialDesign)
-  const [status, setStatus] = useState<Status>(() => (first.restored ? { text: 'Restored your last session.' } : null))
+  const [status, setStatus] = useState<Status>(() => (first.restored ? { text: `Restored your last session.${offSheet(first.off, hasGrown(first.design))}` } : null))
   const [picture, setPicture] = useState<PictureData | null>(null)
   const model = useVeins(() => first, setStatus, picture)
   const { design, stats } = model
@@ -95,6 +104,8 @@ export function App() {
   const [zoom, setZoom] = useState(1)
   const [showHelp, setShowHelp] = useState(false)
   const [showQuickStart, setShowQuickStart] = useState(() => storage.get(QUICK_START_KEY) !== '1')
+  // On a phone the quick start goes below the sheet, so the sheet it talks about stays in view.
+  const phone = useMedia('(max-width: 599px)')
   const [pending, setPending] = useState<Pending | null>(null)
   const [openError, setOpenError] = useState('')
   const [sessionKept, setSessionKept] = useState<Kept>('kept')
@@ -118,7 +129,8 @@ export function App() {
   // tens of milliseconds to build.
   const { width: sheetW, height: sheetH, margin, shape, invert } = s
   const region = useMemo(() => regionOf({ ...DEFAULTS, width: sheetW, height: sheetH, margin, shape, invert }, design.imported), [sheetW, sheetH, margin, shape, invert, design.imported])
-  const partCount = useMemo(() => region.parts().length, [region])
+  const parts = useMemo(() => region.parts(), [region])
+  const unrooted = useMemo(() => unrootedParts(parts, design.roots), [parts, design.roots])
   // The veins as the worker last sent them: a new view with every frame.
   const { net, mirror } = model
   const scene = useMemo(() => sceneOf(s, rings, net, design.attractors, mirror.used, design.roots), [s, rings, net, design.attractors, design.roots, mirror])
@@ -176,11 +188,12 @@ export function App() {
 
   const readProject = async (file: File) => {
     try {
-      const opened = parseProject(await file.text())
+      const { design: opened, off } = fitToSheet(parseProject(await file.text()))
       await model.replace(opened)
-      model.markSaved()
+      // Attractors placed again or set aside are a change the file doesn't have yet.
+      if (!off) model.markSaved()
       setOpenError('')
-      setStatus({ text: `Opened ${file.name}.` })
+      setStatus({ text: `Opened ${file.name}.${offSheet(off, hasGrown(opened))}` })
     } catch (error) {
       // The current design stays as it was.
       setOpenError(error instanceof ProjectError ? error.message : `${file.name} could not be read.`)
@@ -202,26 +215,34 @@ export function App() {
       const shape = shapeFromDrawing(drawing, file.name, cur.units, cur.dpi)
       if ('error' in shape) { setStatus({ text: shape.error, warning: true }); return }
       const { imported } = shape
-      change({ width: imported.width, height: imported.height, shape: 'imported', invert: false, units: shape.units }, null, { imported })
+      const next = await change({ width: imported.width, height: imported.height, shape: 'imported', invert: false, units: shape.units }, null, { imported })
       setTab('shape')
       // The notes stay on the Shape tab after the status line moves on.
       setImportNotes({ rings: imported.rings, text: [...shape.notes, ...shape.warnings].filter(t => !t.startsWith('The file doesn’t say its size')) })
       const outlines = imported.rings.length
-      // A page of small text can have more parts than get a root each; say so, as the rest won't grow.
-      const parts = regionOf({ ...cur, width: imported.width, height: imported.height, shape: 'imported', invert: false }, imported).parts().length
-      const many = parts > MAX_PART_ROOTS ? [`It has ${parts.toLocaleString()} separate parts; the ${MAX_PART_ROOTS} largest get a root each, and the Roots tool adds more.`] : []
+      // A page of small text can have more parts than get a root each, and parts too thin for a root at this
+      // segment length: say so, as those won't grow.
+      const left = unrootedParts(partsOf(shapeRings(next.settings, next.imported)), next.roots)
+      const many = [
+        shape.parts > MAX_PART_ROOTS ? `It has ${shape.parts.toLocaleString()} separate parts; the ${MAX_PART_ROOTS} largest get a root each, and the Roots tool adds more.` : '',
+        !next.roots.length ? `No part of it is wide enough for a root with ${formatLength(next.settings.segment, next.settings.units, next.settings.dpi)} segments: lower Segment length on the Grow tab, then press Default under Roots.`
+          : left ? `${left.toLocaleString()} of its parts ${left === 1 ? 'is' : 'are'} too thin for a root with ${formatLength(next.settings.segment, next.settings.units, next.settings.dpi)} segments; a shorter Segment length roots ${left === 1 ? 'it' : 'them'} too.` : '',
+      ].filter(Boolean)
       setStatus({ text: [`Using ${file.name}: ${outlines} ${outlines === 1 ? 'outline' : 'outlines'}.`, ...shape.notes, ...shape.warnings, ...many].join(' '), warning: shape.warnings.length + many.length > 0 })
     } catch (error) {
       setStatus({ text: error instanceof SvgShapeError ? error.message : `${file.name} could not be read as an SVG.`, warning: true })
     }
   }
 
-  const illustratorSize = () => {
+  const illustratorSize = async () => {
     const cur = model.current()
     if (!cur.imported) return
-    const imported = atIllustratorSize(cur.imported)
-    change({ width: imported.width, height: imported.height, units: 'pt' }, null, { imported })
-    setStatus({ text: `Read at 72 points per inch, as Illustrator writes it: the page is now ${formatLength(imported.width, 'pt', cur.settings.dpi)} × ${formatLength(imported.height, 'pt', cur.settings.dpi)}.` })
+    const { units, dpi } = cur.settings
+    const { imported, warnings } = atIllustratorSize(cur.imported, units, dpi)
+    await change({ width: imported.width, height: imported.height }, null, { imported })
+    // The import's notes still hold for the outline read at the new size.
+    setImportNotes(notes => (notes && notes.rings === cur.imported?.rings ? { rings: imported.rings, text: [...notes.text, ...warnings] } : notes))
+    setStatus({ text: [`Read at 72 points per inch, as Illustrator writes it: the page is now ${formatLength(imported.width, units, dpi)} × ${formatLength(imported.height, units, dpi)}.`, ...warnings].join(' '), warning: warnings.length > 0 })
   }
 
   const readPictureFile = async (file: File) => {
@@ -307,26 +328,34 @@ export function App() {
     const keepsPicture = cur.settings.placement === 'picture' && picture !== null
     if (keepsPicture) next.placement = 'picture'
     const p = PRESETS.find(item => item.id === name)!
-    const roots = startRoots(next, regionOf(next, cur.imported), p.roots)
-    change(next, 'preset', { roots, quiet: true })
+    const region = regionOf(next, cur.imported)
+    // Roots placed by hand stay where they were put, as long as the shape does.
+    const handRoots = !cur.rootsBy && next.shape === cur.settings.shape && cur.roots.length > 0
+    const roots = handRoots ? rootsFor(next, region, cur.roots) : startRoots(next, region, p.roots)
+    change(next, 'preset', { roots, rootsBy: handRoots ? undefined : p.roots, quiet: true })
     // A preset brings its own built-in shape; say so when that replaces the one chosen.
     const shapeNote = next.shape === 'imported' ? ' Your imported shape stays.'
       : next.shape !== cur.settings.shape ? ` It uses the ${SHAPE_NAME[next.shape]} shape; choose another on the Shape tab.` : ''
-    setStatus({ text: `${p.label}: ${p.tip}${shapeNote}${keepsPicture ? ' Your picture still places the attractors.' : ''}` })
+    setStatus({ text: `${p.label}: ${p.tip}${shapeNote}${handRoots ? ' Your roots stay where you put them.' : ''}${keepsPicture ? ' Your picture still places the attractors.' : ''}` })
   }
   const placeRoots = (placement: RootPlacement) => {
     const cur = model.current()
     const roots = startRoots(cur.settings, regionOf(cur.settings, cur.imported), placement)
     if (!roots.length) { setStatus({ text: 'No room for roots there in this shape.', warning: true }); return }
-    // Leaf growth grows the shape out from the first root, so the rest of a row or a ring of roots would wait on it.
+    // Leaf growth grows each part out from its first root, so the rest of a row or a ring of roots would wait on it:
+    // it goes off, in the same step as the roots, so one Undo brings both back.
     const many = (placement === 'row' || placement === 'edge') && cur.settings.leafGrowth
-    if (many) change({ leafGrowth: false }, 'leafGrowth')
-    void model.setRoots(roots, null, many ? 'Leaf growth is off, so every root grows at once; it grows the shape out from one root. Turn it on again on the Grow tab.' : undefined)
-    if (!many) setStatus(null)
+    if (many) {
+      void change({ leafGrowth: false }, null, { roots, rootsBy: placement, quiet: true })
+      setStatus({ text: 'Leaf growth is now off, so every root grows at once instead of waiting for the shape to grow out from the first. Turn it on again on the Grow tab.' })
+      return
+    }
+    void model.setRoots(roots, null, undefined, placement)
+    setStatus(null)
   }
   // Moving or removing a root starts the veins again, so once they've grown it asks first, as Reset does: a stray
-  // drag, Alt-click, or a finger held on a root, would otherwise throw a long run away.
-  const grown = stats.step > 0 && unsaved
+  // drag, Alt-click, or a finger held on a root, would otherwise throw a long run away, saved or not.
+  const grown = stats.step > 0
   const moveRoot = (index: number, x: number, y: number) => guard(grown, {
     title: 'Move the root?', confirm: 'Move',
     body: 'The veins start again from the roots where they are now. Undo brings them back.',
@@ -342,18 +371,18 @@ export function App() {
     })
   }
 
-  const noRoots = stats.points === 0 && 'There are no roots. Pick the Roots tool and click inside the shape to add one.'
+  const noRoots = stats.points === 0 && `There are no roots. Pick the Roots tool and ${touchFirst() ? 'tap' : 'click'} ${s.invert ? 'in the space round the shape' : 'inside the shape'} to add one.`
   const noAttractors = design.attractors.length === 0 && 'There are no attractors to grow toward. Raise the count on the Grow tab, or choose another shape.'
-  const finished = stats.done && stats.done !== 'empty' && `${DONE_TEXT(stats.done, stats.live, design.attractors.length / 2, s.invert, partCount)} Reset to grow again, change a growth setting, or add a root.`
+  const finished = stats.done && stats.done !== 'empty' && `${DONE_TEXT(stats.done, stats.live, design.attractors.length / 2, s.invert, unrooted)} Reset to grow again, change a growth setting, or add a root.`
   const canGrow = noRoots || noAttractors || finished || false
   const resetBlocked = stats.step === 0 && stats.points === design.roots.length && !model.running && 'The veins are already at their roots.'
-  const reset = () => guard(stats.step > 0 && unsaved, {
+  const reset = () => guard(stats.step > 0, {
     title: 'Reset the veins?', confirm: 'Reset',
     body: 'The veins go back to their roots and grow again from there. Undo brings them back.',
     run: () => { void model.reset(); setStatus({ text: 'Back to the roots. Undo brings the veins back.' }) },
   })
   // Growing clears old messages so the counts show; pausing says so briefly.
-  const grow = () => { setStatus(null); model.play() }
+  const grow = () => { setStatus(null); if (showQuickStart) closeQuickStart(); model.play() }
   const pause = () => { model.pause(); setStatus({ text: 'Paused. Press Grow to carry on.' }) }
   const toggleGrow = () => { if (model.running) pause(); else if (!canGrow) grow(); else setStatus({ text: canGrow }) }
   const toggle = (key: ViewKey) => change({ [key]: !s[key] }, key)
@@ -394,7 +423,7 @@ export function App() {
   })
 
   const counts = `${stats.points.toLocaleString()} vein ${stats.points === 1 ? 'point' : 'points'} · ${stats.live.toLocaleString()} ${stats.live === 1 ? 'attractor' : 'attractors'} left · step ${stats.step.toLocaleString()}`
-  const doneText = stats.done ? DONE_TEXT(stats.done, stats.live, design.attractors.length / 2, s.invert, partCount) : ''
+  const doneText = stats.done ? DONE_TEXT(stats.done, stats.live, design.attractors.length / 2, s.invert, unrooted) : ''
   const statusText = status?.text ?? (model.stopping ? 'Stopping after the current step…'
     : model.running ? `Growing · ${counts}` : doneText ? (stats.done === 'out-of-reach' || stats.done === 'cap' ? doneText : `${doneText} ${counts}`) : counts)
 
@@ -404,7 +433,7 @@ export function App() {
       <Stage scene={scene} settings={s} roots={design.roots} region={region} tool={tool} frameRef={frameRef} controlRef={stageRef}
         onAddRoot={(x, y, moved) => {
           model.addRoot(x, y)
-          const where = moved === 'outside' ? ' That point was outside the shape, so the root went to the nearest point inside.'
+          const where = moved === 'outside' ? ' That point was outside the shape, so the root went just inside it.'
             : moved === 'clearance' ? ' It was moved in from the edge, to keep the edge clearance.' : ''
           setStatus({ text: `${stats.step > 0 ? 'Added a root: it grows a vein of its own. Undo removes it.' : 'Added a root.'}${where}` })
         }}
@@ -429,7 +458,7 @@ export function App() {
       </TabPanel>
       <TabPanel idBase="design" id="shape" value={tab}>
         <ShapePanel s={s} imported={design.imported} rootCount={design.roots.length} change={change} onImport={importSvg} onRoots={placeRoots}
-          importNotes={importNotes && design.imported?.rings === importNotes.rings ? importNotes.text : null} onIllustratorSize={illustratorSize} />
+          importNotes={importNotes && design.imported?.rings === importNotes.rings ? importNotes.text : null} onIllustratorSize={() => void illustratorSize()} />
       </TabPanel>
       <TabPanel idBase="design" id="style" value={tab}><StylePanel s={s} change={change} /></TabPanel>
       <TabPanel idBase="design" id="file" value={tab}>
@@ -457,13 +486,15 @@ export function App() {
     <div className="center">
       <ViewBar tool={tool} setTool={setTool} s={s} toggle={toggle} zoom={zoom} onFit={() => stageRef.current?.fit()} onZoom={f => stageRef.current?.zoomBy(f)} />
       <div className="sheet-frame" ref={frameRef}>
-        {showQuickStart && <QuickStart onClose={closeQuickStart} />}
+        {showQuickStart && !phone && <QuickStart onClose={closeQuickStart} />}
       </div>
       <Dock running={model.running} stopping={model.stopping} canGrow={canGrow}
         onGrow={grow} onPause={pause} onStep={() => { setStatus(null); model.step() }} onReset={reset} canReset={resetBlocked}
         status={statusText} warning={status ? Boolean(status.warning) : !model.running && (stats.done === 'out-of-reach' || stats.done === 'cap')}
         canUndo={model.canUndo} canRedo={model.canRedo} onUndo={() => void model.undo()} onRedo={() => void model.redo()} />
     </div>
+
+    {showQuickStart && phone && <QuickStart onClose={closeQuickStart} />}
 
     <aside className="inspector side-panel glass" aria-label="Measurements">
       <Inspector s={s} stats={stats} net={net} attractors={design.attractors.length / 2} roots={design.roots.length} />

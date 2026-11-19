@@ -29,8 +29,8 @@
   --label-3: rgba(60, 60, 67, .55);
   --separator: rgba(60, 60, 67, .14);
   /* The edge of an off switch and a slider's rail, darker than a well so they stand out from the glass. */
-  --control-edge: rgba(60, 60, 67, .42);
-  --rail: rgba(60, 60, 67, .34);
+  --control-edge: rgba(60, 60, 67, .5);
+  --rail: rgba(60, 60, 67, .55);
   --well: rgba(118, 118, 128, .12);
   --well-strong: rgba(118, 118, 128, .22);
   --selected: rgba(255, 255, 255, .95);
@@ -71,10 +71,10 @@
     --label-3: rgba(235, 235, 245, .5);
     --separator: rgba(255, 255, 255, .1);
     --control-edge: rgba(235, 235, 245, .42);
-    --rail: rgba(235, 235, 245, .34);
+    --rail: rgba(235, 235, 245, .42);
     --well: rgba(118, 118, 128, .24);
     --well-strong: rgba(118, 118, 128, .38);
-    --selected: rgba(255, 255, 255, .2);
+    --selected: rgba(255, 255, 255, .16);
     --selected-shadow: 0 1px 3px rgba(0, 0, 0, .3);
     --group: rgba(255, 255, 255, .05);
     --glass: rgba(32, 35, 41, .9);
@@ -174,7 +174,8 @@ button.wide { width: 100%; margin-top: 10px; }
 .field { display: grid; gap: 6px; margin-top: 14px; color: var(--label); font-size: 12.5px; }
 .field-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 18px; }
 .field-label b { color: var(--label-2); font-weight: 500; font-variant-numeric: tabular-nums; }
-.field:has(:disabled) .field-label, .field:has([aria-disabled='true']) .field-label, .switch-row:has(:disabled), .color-row:has(:disabled) { color: var(--label-3); }
+.field:has(:disabled) .field-label, .field:has(> .number-wrap [aria-disabled='true']) .field-label, .field:has(> .field-label .number-wrap [aria-disabled='true']) .field-label,
+.field:has(> [role='group']):not(:has(> [role='group'] button:not([aria-disabled='true']))) .field-label, .switch-row:has(:disabled), .color-row:has(:disabled) { color: var(--label-3); }
 .hint { margin-top: 8px; color: var(--label-2); font-size: 12px; line-height: 1.4; }
 .hint b { color: var(--label); font-weight: 600; }
 .hint.error { color: var(--error-text); }
@@ -307,6 +308,8 @@ details[open] > summary::after { transform: rotate(45deg); }
 .measurements dl div + div { border-top: 1px solid var(--separator); }
 .measurements dt { padding: 5px 0; white-space: nowrap; color: var(--label-2); cursor: help; text-decoration: underline dotted var(--label-3); text-underline-offset: 3px; }
 .measurements dd { margin: 0 0 0 auto; padding-bottom: 1px; white-space: nowrap; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+.measurements dd .then { white-space: nowrap; }
+.measurements dd:has(.then) { white-space: normal; }
 
 /* Floating bars over the sheet. */
 .viewport-bars { display: grid; justify-items: start; gap: 8px; pointer-events: none; }
@@ -388,9 +391,10 @@ kbd { display: inline-block; padding: 1px 7px; border-radius: 6px; background: v
   .tab-panel { flex: none; -webkit-mask-image: none; mask-image: none; }
 }
 
-/* Phones: one column, with a tall sheet view. */
+/* Phones: one column, with a tall sheet view, and the quick start below it rather than over it. */
 @media (max-width: 599px) {
-  .studio { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto auto; grid-template-areas: "brand" "center" "sidebar" "inspector"; }
+  .studio { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto auto auto; grid-template-areas: "brand" "center" "guide" "sidebar" "inspector"; }
+  .studio > .quick-start { grid-area: guide; position: relative; z-index: 1; width: 100%; }
   .center { min-height: 62dvh; }
   .view-caption { display: none; }
   /* Pinch zooms on phones, so the bar keeps only the fit button. */
@@ -404,7 +408,7 @@ kbd { display: inline-block; padding: 1px 7px; border-radius: 6px; background: v
 @media (pointer: coarse) {
   button, .transport button { min-height: 40px; }
   .floating-bar button, .tab-list [role='tab'], .button-row[role='group'] button { min-height: 36px; }
-  .floating-bar .icon-button, .pair .swap, .icon-button, .floating-bar button, .transport button:has(.compact-label) { min-width: 40px; min-height: 40px; }
+  .floating-bar .icon-button, .pair .swap, .icon-button, .floating-bar button, .transport button:has(.compact-label), .floating-bar button:has(.compact-label) { min-width: 40px; min-height: 40px; }
   details > summary { min-height: 44px; }
   .switch-row, .color-row { min-height: 44px; }
   input[type='range'] { height: 44px; }
@@ -420,7 +424,7 @@ kbd { display: inline-block; padding: 1px 7px; border-radius: 6px; background: v
   input[type='range']::-webkit-slider-runnable-track { background: ButtonText; forced-color-adjust: none; }
   input[type='range']::-webkit-slider-thumb { border: 2px solid ButtonText; background: ButtonFace; forced-color-adjust: none; }
   [aria-pressed='true'], [role='tab'][aria-selected='true'] { outline: 2px solid Highlight; outline-offset: -2px; }
-  button[aria-disabled='true'] { color: GrayText; }
+  button[aria-disabled='true'], button.primary[aria-disabled='true'] { color: GrayText; }
   button, select, .number-input { border: 1px solid ButtonText; }
 }
 

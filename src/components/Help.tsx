@@ -8,13 +8,13 @@ export function QuickStart({ onClose }: { onClose: () => void }) {
     <h2 id="quick-start-title">Quick start</h2>
     <ol>
       {touchFirst()
-        ? <li><b>Grow:</b> tap Grow and watch veins grow from the root toward the attractors that fill the leaf. Try a preset on the Grow tab.</li>
-        : <li><b>Grow:</b> press <kbd>Space</kbd> and watch veins grow from the root toward the attractors that fill the leaf. Try a preset on the Grow tab.</li>}
+        ? <li><b>Grow:</b> tap Grow and watch veins grow from the root toward attractors, points scattered in the leaf that Attractors, above the sheet, shows. Try a preset on the Grow tab.</li>
+        : <li><b>Grow:</b> press <kbd>Space</kbd> and watch veins grow from the root toward attractors, points scattered in the leaf that Attractors, above the sheet, shows. Try a preset on the Grow tab.</li>}
       <li><b>Shape:</b> pick a shape or import an SVG outline, and {touchFirst() ? 'tap' : 'click'} with the Roots tool to add more roots.</li>
       <li><b>File:</b> export SVG or DXF at real size for Illustrator, plotters and lasers, or a PNG.</li>
     </ol>
     <p>{touchFirst() ? 'Tap a greyed-out control to see why it can’t be used yet.' : 'Hover over any control to see what it does.'}</p>
-    <button type="button" className="primary" data-tip="Hide this guide. Reopen it from the ? button." onClick={onClose}>Got it</button>
+    <button type="button" className="primary" data-tip="Hide this guide, which the ? button opens again." onClick={onClose}>Got it</button>
   </section>
 }
 

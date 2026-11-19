@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Frame" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 11905.51 8503.94">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: #5a5a5f;
+      }
+    </style>
+  </defs>
+  <path id="Facade_frame" data-name="Facade frame" class="cls-1" d="M9354.33,4535.43V283.46h2267.72v4251.97H9354.33ZM5669.29,8220.47V283.46h3401.58v7937.01H5669.29ZM283.46,8220.47V283.46h5102.37v7937.01H283.46ZM0,8503.94V0h11905.51v8503.94H0Z"/>
+</svg>

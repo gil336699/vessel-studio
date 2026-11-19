@@ -1,5 +1,39 @@
 # Vessel Studio Changelog
 
+## 1.4.0 2026-11-19
+
+QA round 3 of 3: the same four reviews (a user test, a developer test, a UI/UX test and real jobs for designers), on 1.3.0.
+
+- **Leaf growth grows each part of a drawing about its own root.** A pair of earrings, the panels of a facade or the letters of a word each grow out from their own first root, as a leaf of its own, and a mirrored pair grows alike. Before, every part grew about the first root in the file, so the second earring's veins swept in from the first one's side in long lines.
+- **Undo after dragging Count is one step.** After the slider was let go, the browser's own change event left a hidden choice that the next key applied again: the first Undo seemed to do nothing, and Redo was lost. Arrow keys on Count now apply once they rest, so five presses place the attractors once, as one step.
+- **Bow ties and figures of eight import again.** An outline drawn as one path that crosses itself was dropped as having no area, which 1.3.0 broke.
+- **Roots follow the shape.**
+  - Roots placed with Default, Base, Centre, Row or Edge are placed again the same way when the sheet, margin or edge clearance changes. A margin taken up and back puts the root back at the leaf's base; it stayed where it had been pushed. Every letter of a word keeps a root at any clearance; roots jumped to other letters.
+  - Roots placed by hand move in only as far as needed, each within its own part, and a preset keeps them.
+  - Row and Edge root every part of a drawing; Row missed parts. Edge roots a drawing of very many parts as the others do, its 500 largest.
+- **Touch works as documented.** Tapping a greyed-out control shows why beside it: the finger lifting hid it at once. Pressing and holding a root after growth opens the question and leaves it open: on a tablet, the lift closed it.
+- **Importing is faster and says more.**
+  - 5,000 small letters with holes import in 1.2 s (8.6 s in 1.3.0), and 10,000 in 1.9 s (32 s).
+  - Only the two edges of one compound path are read as an outlined stroke: a panel drawn in a frame's opening with an even gap round it stays a panel. It vanished.
+  - A frame with several openings gets the frame note, and a frame round other shapes, as a badge's ring round its letters, gets one of its own.
+  - A drawing larger than the 3 m sheet says how much it was scaled and how much to enlarge the exports for full size, and a sheet size typed past a limit says so; both were silent.
+  - A file whose art lies wholly off its page says so; it imported as nothing. Parts too thin for a root at the segment length are counted, with what to do.
+  - preserveAspectRatio's alignments and slice, percentages, SVG 2 symbols, nested pages with no size and switches by language are read as Chrome draws them, in 14 test cases.
+  - Read at 72 points per inch keeps the sheet limits, the import's notes and your units.
+- **Older projects** whose art ran past the page have their attractors placed again on the sheet or, once grown, those off it set aside, and the status says so.
+- **Fixes**
+  - Moving or removing a root, and Reset, ask first after growth even when the design is saved.
+  - Space grows on a slider nudged with the arrow keys.
+  - Widest vein reads the widest vein drawn; with a root that forks at once it gave the root's own width, 17–25 % too wide.
+  - The count of attractors waiting for the growing leaf shows after opening, reloading and Undo.
+  - A growth worker that can't load leaves the app usable, saying why; it could hang at "Stopping…".
+  - Row or Edge with Leaf growth on is one Undo step.
+  - On a phone the quick start sits below the sheet, and it closes on the first Grow.
+  - The Placement label is no longer grey, the finished Grow looks unavailable in forced colours, slider rails and off switches are darker, the attractors waiting can wrap, compact buttons are 40 px on touch, and every tooltip is one sentence.
+  - A sheet change that leaves a preset's lengths far off the new size says so; README's workflow now picks the sheet before the preset.
+  - Art trimmed along the right or bottom of the sheet is a hole when growing outside the shape.
+- **A correction to 1.3.0:** its commit said growth was identical to 1.2.0's. For imported drawings of several parts with Leaf, Leaf with loops and Tree, the default roots had moved, so those grew differently.
+
 ## 1.3.0 2026-11-19
 
 QA round 2 of 3: the same four reviews, on 1.2.0, checking round 1's fixes and looking for what it missed.

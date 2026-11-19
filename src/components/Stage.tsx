@@ -2,6 +2,8 @@ import { type RefObject, useCallback, useEffect, useLayoutEffect, useRef, useSta
 import type { Vec } from '../veins/geometry'
 import type { Region } from '../veins/region'
 import { rootInset } from '../lib/design'
+import { movesFocus, spaceGrows } from '../lib/keys'
+import { touchFirst } from '../lib/touch'
 import { drawScene } from '../lib/render'
 import type { Scene } from '../lib/scene'
 import type { Settings } from '../lib/settings'
@@ -154,16 +156,13 @@ export function Stage({ scene, settings, roots, region, tool, frameRef, controlR
   useEffect(() => { tapRef.current = onSpaceTap }, [onSpaceTap])
   const hold = useRef(0)
   // Whether the last thing done was with the pointer: then a focused control got its focus from a click, or from a
-  // dialog closed with one, and Space grows. Tab and the arrow keys move focus by keyboard, and Space works the
-  // control again.
+  // dialog closed with one, and Space grows. Tab, and the arrow keys in a group of options, move focus by keyboard,
+  // and Space works the control again.
   const pointerLast = useRef(false)
   useEffect(() => {
-    const CONTROL = 'button, input[type=range], input[type=checkbox], summary'
     const pointer = () => { pointerLast.current = true }
-    const key = (event: KeyboardEvent) => { if (event.key === 'Tab' || event.key.startsWith('Arrow') || event.key === 'Home' || event.key === 'End') pointerLast.current = false }
-    const byPointer = (event: KeyboardEvent) => event.target instanceof Element && pointerLast.current
-      && Boolean(event.target.closest(CONTROL)) && !event.target.closest('[role=dialog], [role=alertdialog]')
-    const ignored = (event: KeyboardEvent) => event.target instanceof Element && Boolean(event.target.closest('input, select, textarea, button, summary, [role=dialog], [role=alertdialog]')) && !byPointer(event)
+    const key = (event: KeyboardEvent) => { if (movesFocus(event.key, event.target)) pointerLast.current = false }
+    const ignored = (event: KeyboardEvent) => !spaceGrows(event.target, pointerLast.current)
     const down = (event: KeyboardEvent) => {
       if (event.code !== 'Space' || ignored(event)) return
       event.preventDefault()
@@ -305,7 +304,8 @@ export function Stage({ scene, settings, roots, region, tool, frameRef, controlR
 
   return <div ref={box} className="stage-canvas">
     <canvas ref={canvas} style={{ cursor }} role="img"
-      aria-label="Sheet preview. With the Roots tool, click to add a root where veins start, drag a root to move it, or Alt-click it to remove it."
+      aria-label={touchFirst() ? 'Sheet preview. With the Roots tool, tap to add a root where veins start, drag a root to move it, or press and hold it to remove it.'
+        : 'Sheet preview. With the Roots tool, click to add a root where veins start, drag a root to move it, or Alt-click it to remove it.'}
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
       onPointerLeave={() => { if (!drag.current) setHover(null) }} onContextMenu={event => event.preventDefault()} />
   </div>

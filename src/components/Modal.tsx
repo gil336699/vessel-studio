@@ -1,6 +1,8 @@
 import { type ReactNode, useEffect, useRef } from 'react'
 
-// A modal dialog that takes focus, keeps Tab inside, and returns focus to where it was opened.
+// A modal dialog that takes focus, keeps Tab inside, and returns focus to where it was opened. A press on the
+// backdrop closes it, but only one that started there: a dialog opened by pressing and holding a root on a touch
+// screen would otherwise close as the finger lifts off the backdrop.
 export function Modal({ role = 'dialog', labelledBy, describedBy, label, onClose, children }: {
   role?: 'dialog' | 'alertdialog'
   labelledBy?: string
@@ -10,6 +12,7 @@ export function Modal({ role = 'dialog', labelledBy, describedBy, label, onClose
   children: ReactNode
 }) {
   const card = useRef<HTMLDivElement>(null)
+  const pressed = useRef(false)
   useEffect(() => {
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
     // Prefer the marked control, even when other buttons come first in the dialog.
@@ -25,7 +28,8 @@ export function Modal({ role = 'dialog', labelledBy, describedBy, label, onClose
     if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
   }
-  return <div className="help-backdrop" role="presentation" onClick={onClose}>
+  return <div className="help-backdrop" role="presentation" onPointerDown={event => { pressed.current = event.target === event.currentTarget }}
+    onClick={event => { if (event.target === event.currentTarget && pressed.current) onClose(); pressed.current = false }}>
     <div ref={card} className="help-card" role={role} aria-modal="true" aria-labelledby={labelledBy} aria-describedby={describedBy}
       aria-label={label} onKeyDown={trapTab} onClick={event => event.stopPropagation()}>
       {children}

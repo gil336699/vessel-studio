@@ -80,7 +80,8 @@ export function TooltipLayer() {
       const delay = Date.now() < warmUntil ? 0 : SHOW_DELAY
       timer = window.setTimeout(() => show(element, element, 'hover'), delay)
     }
-    const onOut = (event: PointerEvent) => { if (!event.relatedTarget) hide() }
+    // A finger lifting off sends pointerout too, which would hide a reason a tap has just shown.
+    const onOut = (event: PointerEvent) => { if (event.pointerType !== 'touch' && !event.relatedTarget) hide() }
     const onFocus = (event: FocusEvent) => {
       const target = event.target instanceof HTMLElement ? event.target : null
       if (!target || !target.matches(':focus-visible')) return
@@ -88,7 +89,9 @@ export function TooltipLayer() {
       hide()
       if (element) show(element, target, 'focus')
     }
-    const onBlur = () => { if (anchor && mode === 'focus') hide() }
+    // Only its own control losing focus hides a tooltip: a tap moves focus to the tapped control, and the one that
+    // had it would otherwise hide the reason the tap has just shown.
+    const onBlur = (event: FocusEvent) => { if (anchor && mode === 'focus' && event.target instanceof Node && anchor.contains(event.target)) hide() }
     const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') hide() }
     // A touch screen shows no tooltips on hover, so a tap on a control that can't be used yet shows why, beside it,
     // for a few seconds; the status line can be off the screen on a phone.

@@ -9,7 +9,7 @@ import type { Change } from './ShapePanel'
 
 const placements = (picture: boolean): Option<Placement>[] => [
   { value: 'even', label: 'Even', tip: 'Spread evenly, without a grid; gives the smoothest veins.' },
-  { value: 'random', label: 'Random', tip: 'Scattered at random, with clumps and gaps. Veins wander more.' },
+  { value: 'random', label: 'Random', tip: 'Scattered at random, with clumps and gaps, so veins wander more.' },
   { value: 'grid', label: 'Grid', tip: 'A slightly jittered grid, whose rows can show.' },
   { value: 'edge', label: 'Edge', tip: 'Crowded near the outline, so fine twigs fill the edge, as in a tree’s crown.' },
   { value: 'picture', label: 'Picture', tip: 'More attractors where a picture is darker, so veins follow its dark areas.', unavailable: !picture && 'Choose a picture first, with the button below.' },
@@ -36,9 +36,9 @@ export const GrowPanel = memo(function GrowPanel({ s, change, onPreset, onShuffl
       </div>
     </Section>
 
-    <Section title="Attractors" tip="Points veins grow toward. Each one is used up once a vein comes within the kill distance.">
+    <Section title="Attractors" tip="Points veins grow toward, each used up once a vein comes within the kill distance.">
       <RangeField label="Count" value={s.count} min={LIMITS.count[0]} max={LIMITS.count[1]} step={1} digits={0} log onRelease
-        tip="How many attractors fill the shape. More gives denser veins and smoother branches." onChange={count => change({ count: Math.round(count) }, 'count')} />
+        tip="How many attractors fill the shape: more gives denser veins and smoother branches." onChange={count => change({ count: Math.round(count) }, 'count')} />
       <Segmented label="Placement" options={placements(Boolean(picture))} value={s.placement} columns={3} onChange={placement => change({ placement }, 'placement')} />
       <div className="button-row one-line">
         <Button tip="New random attractors and wiggle, with the same settings." onClick={onShuffle}><Icon name="dice" />New pattern</Button>
@@ -49,7 +49,7 @@ export const GrowPanel = memo(function GrowPanel({ s, change, onPreset, onShuffl
 
     <Section title="Growth">
       <RangeField label="Segment length" value={s.segment} min={Math.min(0.05, segMax)} max={segMax} step={0.01} digits={digits} scale={k} suffix={unit}
-        tip="Distance between neighbouring vein points. Smaller gives finer detail and takes more steps." onChange={segment => change({ segment }, 'segment')} />
+        tip="Distance between neighbouring vein points: smaller gives finer detail and takes more steps." onChange={segment => change({ segment }, 'segment')} />
       <RangeField label="Kill distance" value={s.kill} min={0.05} max={killMax} step={0.01} digits={digits} scale={k} suffix={unit}
         tip="How close a vein must come to use up an attractor; smaller gives finer, denser veins."
         onChange={kill => change({ kill }, 'kill')} />
@@ -57,7 +57,7 @@ export const GrowPanel = memo(function GrowPanel({ s, change, onPreset, onShuffl
         tip="On, veins feel only attractors within the distance below, so their tips wander; off, every attractor pulls, as in a leaf."
         onChange={on => change({ attraction: on ? Math.min(reachMax, Math.max(s.kill * 4, s.segment * 20)) : 0 }, 'attraction')} />
       {s.attraction > 0 && <RangeField label="Attraction distance" value={s.attraction} min={Math.max(0.1, s.kill)} max={reachMax} step={0.1} digits={digits} scale={k} suffix={unit}
-        tip="How far a vein point senses attractors. Smaller makes branch tips wander between attractors, a wiggly, gnarly look." onChange={attraction => change({ attraction }, 'attraction')} />}
+        tip="How far a vein point senses attractors: smaller makes branch tips wander between them, for a wiggly, gnarly look." onChange={attraction => change({ attraction }, 'attraction')} />}
       {s.kill < s.segment && <p className="hint warning">The kill distance is shorter than a segment, so veins can step past attractors without using them up. Make it at least {trimZeros((s.segment * k).toFixed(digits))} {unit}.</p>}
       <SwitchField label="Loops" checked={s.loops}
         tip="Veins from several sides grow to the same attractor and join, closing loops like a leaf’s fine net; slower."
@@ -66,12 +66,12 @@ export const GrowPanel = memo(function GrowPanel({ s, change, onPreset, onShuffl
         tip="The shape grows out from the first root, so main veins form first and finer ones fill in after."
         onChange={leafGrowth => change({ leafGrowth }, 'leafGrowth')} />
       {s.leafGrowth && <SliderField label="Grows over" value={s.leafSteps} min={LIMITS.leafSteps[0]} max={2000} step={10} format={v => `${Math.round(v)} steps`}
-        tip="How many steps the outline takes to reach full size. Slower growth gives smoother main veins that follow the edge." onChange={leafSteps => change({ leafSteps }, 'leafSteps')} />}
+        tip="How many steps the outline takes to reach full size: slower growth gives smoother main veins that follow the edge." onChange={leafSteps => change({ leafSteps }, 'leafSteps')} />}
       <SwitchField label="Keep veins apart" checked={s.apart}
         tip="Refuses a new point that would land on another vein, so points never pile up."
         onChange={apart => change({ apart }, 'apart')} />
       <SliderField label="Speed" value={s.speed} min={LIMITS.speed[0]} max={LIMITS.speed[1]} step={1} format={v => `${Math.round(v)} ${Math.round(v) === 1 ? 'step' : 'steps'} a frame`}
-        tip="Steps grown between screen updates. Higher grows faster; lower lets you watch each step." onChange={speed => change({ speed: Math.round(speed) }, 'speed')} />
+        tip="Steps grown between screen updates: higher grows faster, and lower lets you watch each step." onChange={speed => change({ speed: Math.round(speed) }, 'speed')} />
     </Section>
 
     <Section title="Feel" folded="Keep heading, wiggle, pull">

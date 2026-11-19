@@ -32,7 +32,7 @@ export const StylePanel = memo(function StylePanel({ s, change }: { s: Settings;
     </Section>
     <Section title="Curves">
       <SwitchField label="Smooth curves" checked={s.smooth}
-        tip="Draw and export each vein as a smooth curve through its points. Off draws straight segments between them."
+        tip="Draw and export each vein as a smooth curve through its points, rather than straight from point to point."
         onChange={smooth => change({ smooth }, 'smooth')} />
     </Section>
   </>

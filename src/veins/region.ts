@@ -2,8 +2,8 @@
 // (an obstacle veins grow round). Built once per shape. Inside tests use horizontal bands of edges, and
 // crossing tests walk a grid of edges along the segment, so an imported outline with thousands of points
 // stays fast.
-import { boxesOverlap, boxOf, isConvex, signedArea, toSegment, type Box, type Ring, type Vec } from './geometry'
-import { ringInside } from './strokes'
+import { boxOf, isConvex, pointInRing, signedArea, toSegment, type Box, type Ring, type Vec } from './geometry'
+import { ringDepths } from './strokes'
 
 export class Region {
   readonly rings: Ring[]
@@ -41,9 +41,7 @@ export class Region {
     this.rings = rings.filter(r => r.length >= 3)
     this.box = this.rings.length ? boxOf(this.rings) : [0, 0, 0, 0]
     // Even-odd: a ring inside an odd number of other rings is a hole, so its area counts against the total.
-    // Rings whose boxes don't meet can't be nested, which skips most pairs in a drawing of many outlines.
-    const boxes = this.rings.map(r => boxOf([r]))
-    this.depths = this.rings.map((ring, i) => this.rings.reduce((k, other, j) => k + (j !== i && boxesOverlap(boxes[i], boxes[j]) && ringInside(ring, other) ? 1 : 0), 0))
+    this.depths = ringDepths(this.rings)
     const exact = Math.max(0, this.rings.reduce((sum, ring, i) => sum + (this.depths[i] % 2 ? -1 : 1) * Math.abs(signedArea(ring)), 0))
     this.area = exact
     this.convex = this.rings.length === 1 && isConvex(this.rings[0])
@@ -287,17 +285,48 @@ export class Region {
     return true
   }
 
-  // The point itself when it's inside, otherwise the nearest point a little way inside the edge. Used for roots,
-  // which must start inside so their first step doesn't cross the edge.
-  nearestInside(x: number, y: number, inset: number): Vec | null {
-    if (this.contains(x, y) && this.edgeDistance(x, y, inset) >= inset) return [x, y]
-    let best: { d: number; x: number; y: number; i: number } | null = null
-    for (let i = 0; i < this.edgeCount; i++) {
-      const s = toSegment(x, y, this.ex0[i], this.ey0[i], this.ex1[i], this.ey1[i])
-      if (!best || s.d < best.d) best = { ...s, i }
+  // The nearest point of any edge, and that edge: the first in the file of any equally near. Searches outward a ring
+  // of cells at a time, as edgeDistance does, so it doesn't measure every edge of a detailed drawing.
+  private nearestEdge(x: number, y: number): { d: number; x: number; y: number; i: number } | null {
+    if (this.edgeCount === 0) return null
+    // A point off the grid starts from the nearest cell on it: cells r rings from there are still at least r − 1
+    // cells from the point.
+    const i = this.cx(x), j = this.cy(y)
+    const best = { d: Infinity, x: 0, y: 0, i: -1 }
+    const q = ++this.query
+    const last = Math.max(i, this.nx - 1 - i, j, this.ny - 1 - j)
+    const test = (c: number) => {
+      for (let m = this.cellStart[c]; m < this.cellStart[c + 1]; m++) {
+        const e = this.cellItems[m]
+        if (this.stamp[e] === q) continue
+        this.stamp[e] = q
+        const s = toSegment(x, y, this.ex0[e], this.ey0[e], this.ex1[e], this.ey1[e])
+        if (s.d < best.d || (s.d === best.d && e < best.i)) { best.d = s.d; best.x = s.x; best.y = s.y; best.i = e }
+      }
     }
+    for (let r = Math.max(0, this.ring[j * this.nx + i]); r <= last; r++) {
+      // Cells further out are at least (r − 1) cells away: none can hold a nearer edge, or an equally near one.
+      if ((r - 1) * this.cell > best.d) break
+      if (r === 0) { test(j * this.nx + i); continue }
+      const il = Math.max(0, i - r), ir = Math.min(this.nx - 1, i + r)
+      if (j - r >= 0) for (let k = il; k <= ir; k++) test((j - r) * this.nx + k)
+      if (j + r < this.ny) for (let k = il; k <= ir; k++) test((j + r) * this.nx + k)
+      const j0 = Math.max(0, j - r + 1), j1 = Math.min(this.ny - 1, j + r - 1)
+      if (i - r >= 0) for (let m = j0; m <= j1; m++) test(m * this.nx + i - r)
+      if (i + r < this.nx) for (let m = j0; m <= j1; m++) test(m * this.nx + i + r)
+    }
+    return best.i >= 0 ? best : null
+  }
+
+  // The point itself when it's inside, otherwise the nearest point a little way inside the edge. Used for roots,
+  // which must start inside so their first step doesn't cross the edge. within: a further test the point must
+  // pass, such as lying in one part of the shape; reach: how far from (x, y) to look, which keeps a search in a
+  // small part from going over the whole sheet.
+  nearestInside(x: number, y: number, inset: number, within?: (x: number, y: number) => boolean, reach = Infinity): Vec | null {
+    const ok = (px: number, py: number) => this.contains(px, py) && this.edgeDistance(px, py, inset) >= inset * 0.999 && (!within || within(px, py))
+    if (this.contains(x, y) && this.edgeDistance(x, y, inset) >= inset && (!within || within(x, y))) return [x, y]
+    const best = this.nearestEdge(x, y)
     if (!best) return null
-    const ok = (px: number, py: number) => this.contains(px, py) && this.edgeDistance(px, py, inset) >= inset * 0.999
     // Step in from a point of an edge, further each try, until the point is inside and clear of every edge.
     const stepIn = (i: number, bx: number, by: number): Vec | null => {
       const ex = this.ex1[i] - this.ex0[i], ey = this.ey1[i] - this.ey0[i], L = Math.hypot(ex, ey) || 1
@@ -313,7 +342,7 @@ export class Region {
     // letters: then look outward from the point itself, in rings a quarter wider each time, for the nearest point
     // inside and clear of the edges. Points on a ring are about an inset apart, up to 256 of them.
     const [bx0, by0, bx1, by1] = this.box
-    const far = Math.max(Math.hypot(x - bx0, y - by0), Math.hypot(x - bx1, y - by0), Math.hypot(x - bx0, y - by1), Math.hypot(x - bx1, y - by1))
+    const far = Math.min(reach, Math.max(Math.hypot(x - bx0, y - by0), Math.hypot(x - bx1, y - by0), Math.hypot(x - bx0, y - by1), Math.hypot(x - bx1, y - by1)))
     for (let r = inset; r <= far + inset; r *= 1.25) {
       const n = Math.max(16, Math.min(256, Math.ceil((2 * Math.PI * r) / inset)))
       for (let k = 0; k < n; k++) {
@@ -343,13 +372,38 @@ export class Region {
   }
 }
 
+// Whether a point lies in part k of the shape and not in a part drawn inside it, as a letter sits inside a badge's
+// ring. parts: the shape's parts, as region.parts() gives them.
+export function partTest(parts: Ring[], k: number): (x: number, y: number) => boolean {
+  const ring = parts[k], box = boxOf([ring]), area = Math.abs(signedArea(ring))
+  const inner = parts.filter((r, i) => {
+    if (i === k || Math.abs(signedArea(r)) >= area) return false
+    const b = boxOf([r])
+    return b[0] >= box[0] && b[1] >= box[1] && b[2] <= box[2] && b[3] <= box[3] && pointInRing(ring, r[0][0], r[0][1])
+  })
+  return (x, y) => x >= box[0] && x <= box[2] && y >= box[1] && y <= box[3] && pointInRing(ring, x, y) && !inner.some(r => pointInRing(r, x, y))
+}
+
+// The part a point lies in: the smallest one round it, as letters can sit inside a badge's ring; -1 for none.
+export function partAt(parts: Ring[], x: number, y: number): number {
+  let best = -1, bestArea = Infinity
+  parts.forEach((ring, i) => {
+    const [x0, y0, x1, y1] = boxOf([ring])
+    if (x < x0 || x > x1 || y < y0 || y > y1 || !pointInRing(ring, x, y)) return
+    const a = Math.abs(signedArea(ring))
+    if (a < bestArea) { best = i; bestArea = a }
+  })
+  return best
+}
+
 // The shortest distance between segments ab and cd: 0 when they meet, otherwise from an end of one to the other.
 function segmentDistance(ax: number, ay: number, bx: number, by: number, cx: number, cy: number, dx: number, dy: number): number {
   if (segmentMeets(ax, ay, bx, by, cx, cy, dx, dy)) return 0
   return Math.min(toSegment(ax, ay, cx, cy, dx, dy).d, toSegment(bx, by, cx, cy, dx, dy).d, toSegment(cx, cy, ax, ay, bx, by).d, toSegment(dx, dy, ax, ay, bx, by).d)
 }
 
-// Whether segments ab and cd meet: cross, touch, or overlap. Cautious on purpose (see geometry.segmentsCross).
+// Whether segments ab and cd meet: cross, touch, or overlap. Cautious on purpose: a growth step that touches the
+// edge, passes exactly through a corner of it, or slides along it counts as leaving.
 function segmentMeets(ax: number, ay: number, bx: number, by: number, cx: number, cy: number, dx: number, dy: number): boolean {
   const d1 = (dx - cx) * (ay - cy) - (dy - cy) * (ax - cx)
   const d2 = (dx - cx) * (by - cy) - (dy - cy) * (bx - cx)

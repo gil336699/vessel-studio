@@ -86,11 +86,12 @@ describe('changes to a design', () => {
 
   it('reads a file with no stated size again at Illustrator’s 72 points per inch, when asked', () => {
     const im: Imported = { name: 'b.svg', sized: 'css', width: 228.6, height: 228.6, rings: [square(10, 10, 100, 100)] }
-    const big = atIllustratorSize(im)
+    const { imported: big, warnings } = atIllustratorSize(im, 'mm', 300)
     // 9 in read at 96 per inch is 12 in at 72.
     expect(big.width).toBeCloseTo(304.8, 6)
-    expect(big.sized).toBe('illustrator')
+    expect(big.sized).toBe('points')
     expect(big.rings[0][2]).toEqual([100 * (96 / 72), 100 * (96 / 72)])
+    expect(warnings).toEqual([])
   })
 
   it('says when outlines make a frame, so veins grow in its band rather than its opening', () => {

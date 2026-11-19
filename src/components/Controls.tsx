@@ -1,4 +1,4 @@
-import { type ReactNode, useId, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react'
 import { rangeFill } from '../lib/rangeFill'
 import { decimals, fromUnits, stepFor, toUnits, trimZeros, UNIT_LABEL, type Units } from '../lib/units'
 
@@ -64,9 +64,11 @@ export function SliderField({ label, value, min, max, step = 1, onChange, format
 // loses focus, clamped to its range then (the App Development Standard's rule from Growth Studio 0.8.2, where
 // clamping or applying each keystroke turned 80 into 100 and 300 into 1,300). Arrow keys and the spin buttons
 // apply at once.
-export function DraftNumber({ value, min, max, step = 1, digits = 0, onChange, disabled, className = 'number-input', labelledBy, label }: {
+// onStep: where a spin button's or an arrow key's change goes, when it shouldn't apply at once; onLeave: called as
+// the box loses focus.
+export function DraftNumber({ value, min, max, step = 1, digits = 0, onChange, onStep, onLeave, disabled, className = 'number-input', labelledBy, label }: {
   value: number; min: number; max: number; step?: number; digits?: number; onChange: (value: number) => void
-  disabled?: boolean; className?: string; labelledBy?: string; label?: string
+  onStep?: (value: number) => void; onLeave?: () => void; disabled?: boolean; className?: string; labelledBy?: string; label?: string
 }) {
   // What was typed, and the value it was typed against. It shows only while that is still the value, so a
   // change from elsewhere (an import, a linked field, Undo) replaces it instead of being overwritten on blur.
@@ -75,10 +77,11 @@ export function DraftNumber({ value, min, max, step = 1, digits = 0, onChange, d
   const typing = draft !== null && same(draft.at, value)
   const shown = typing ? draft.text : trimZeros(value.toFixed(digits))
   const commit = () => {
-    // Only text that was actually typed is applied, so tabbing through a field never rounds its value.
+    // Only text that was actually typed is applied, so tabbing through a field never rounds its value. It goes on
+    // as typed: what it's for brings it within its limits and can say so, as a 4,200 mm sheet becomes 3,000 mm.
     if (typing) {
       const v = Number(draft.text)
-      if (draft.text.trim() !== '' && Number.isFinite(v)) onChange(Math.min(max, Math.max(min, v)))
+      if (draft.text.trim() !== '' && Number.isFinite(v)) onChange(v)
     }
     setDraft(null)
   }
@@ -91,10 +94,10 @@ export function DraftNumber({ value, min, max, step = 1, digits = 0, onChange, d
       // A spin button or an arrow key changes the value without typing: apply it straight away.
       const typed = Boolean((event.nativeEvent as InputEvent).inputType)
       const v = Number(text)
-      if (!typed && text.trim() !== '' && Number.isFinite(v)) { setDraft(null); onChange(Math.min(max, Math.max(min, v))); return }
+      if (!typed && text.trim() !== '' && Number.isFinite(v)) { setDraft(null); (onStep ?? onChange)(Math.min(max, Math.max(min, v))); return }
       setDraft({ text, at: value })
     }}
-    onBlur={() => { if (!disabled) commit() }}
+    onBlur={() => { if (!disabled) commit(); onLeave?.() }}
     onKeyDown={event => { if (event.key === 'Enter' && !disabled) commit() }} />
 }
 
@@ -147,13 +150,34 @@ export function Section({ title, children, tip, folded }: { title: string; child
 // in the display unit; `scale` converts stored values to it (for example millimetres to points).
 // onRelease: the slider applies its value when let go, not at every step of a drag, for settings that are slow
 // to apply, such as Count, which places every attractor again. The number shows the value as it moves.
+// Keys that change a slider's value, rather than move focus or work a shortcut.
+const VALUE_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'])
+// How long keys rest before a value they stepped to applies.
+const KEYS_REST_MS = 500
+const same = (a: number, b: number) => Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(b))
+
+// onRelease: the value being chosen, by dragging or by keys, is held and applied once, when the pointer lets go or
+// the keys rest, so a slow change such as Count places the attractors once and makes one Undo step.
 export function RangeField({ label, value, min, max, step, digits, scale = 1, suffix, onChange, tip, unavailable, log, onRelease }: Tip & {
   label: string; value: number; min: number; max: number; step: number; digits: number; scale?: number; suffix?: string
   onChange: (value: number) => void; log?: boolean; onRelease?: boolean
 }) {
   const id = useId()
   const [moving, setMoving] = useState<number | null>(null)
-  const release = () => { if (moving !== null) { onChange(moving); setMoving(null) } }
+  const held = useRef<number | null>(null)
+  const timer = useRef(0)
+  const latest = useRef({ value, onChange })
+  useEffect(() => { latest.current = { value, onChange } })
+  const drop = useCallback(() => { window.clearTimeout(timer.current); held.current = null; setMoving(null) }, [])
+  const release = useCallback(() => {
+    const v = held.current
+    drop()
+    if (v !== null && !same(v, latest.current.value)) latest.current.onChange(v)
+  }, [drop])
+  const hold = (v: number) => { held.current = v; setMoving(v) }
+  const soon = () => { window.clearTimeout(timer.current); timer.current = window.setTimeout(release, KEYS_REST_MS) }
+  // A value still held when the field goes, as when its panel closes, applies.
+  useEffect(() => () => { if (held.current !== null) release() }, [release])
   const shown = moving ?? value
   const toTrack = (v: number) => (log ? Math.log(v) : v)
   const fromTrack = (t: number) => (log ? Math.exp(t) : t)
@@ -162,7 +186,8 @@ export function RangeField({ label, value, min, max, step, digits, scale = 1, su
     <span className="field-label"><span id={id}>{label}</span>
       <span className="number-wrap">
         <DraftNumber value={shown * scale} min={min * scale} max={max * scale} step={step * scale} digits={digits} labelledBy={id}
-          disabled={Boolean(unavailable)} className="number-input inline-number" onChange={v => onChange(round(v / scale))} />
+          disabled={Boolean(unavailable)} className="number-input inline-number" onChange={v => { drop(); onChange(round(v / scale)) }}
+          onStep={onRelease ? v => { hold(round(v / scale)); soon() } : undefined} onLeave={onRelease ? release : undefined} />
         {suffix && <span className="suffix" aria-hidden="true">{suffix}</span>}
       </span>
     </span>
@@ -171,9 +196,15 @@ export function RangeField({ label, value, min, max, step, digits, scale = 1, su
       onChange={event => {
         const raw = fromTrack(Number(event.currentTarget.value))
         const snapped = round(log ? raw : Math.round(raw / step) * step)
-        if (onRelease) setMoving(snapped)
-        else onChange(snapped)
+        if (!onRelease) { onChange(snapped); return }
+        // The browser's own change event, after the slider is let go, carries the applied value back a hair off
+        // (792.0000000000036 for 792): that's no new choice, and holding it would apply it again on the next key.
+        if (held.current === null && same(snapped, value)) return
+        hold(snapped)
       }}
-      onPointerUp={release} onKeyUp={release} onBlur={release} />
+      onPointerUp={onRelease ? release : undefined} onPointerCancel={onRelease ? release : undefined} onBlur={onRelease ? release : undefined}
+      // A shortcut such as Undo works on what the slider shows: what it holds applies first.
+      onKeyDown={onRelease ? event => { if (!VALUE_KEYS.has(event.key)) release() } : undefined}
+      onKeyUp={onRelease ? event => { if (VALUE_KEYS.has(event.key)) soon() } : undefined} />
   </div>
 }

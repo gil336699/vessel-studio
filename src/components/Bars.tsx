@@ -1,5 +1,5 @@
 import { memo, type ReactNode } from 'react'
-import { networkStats, veinWidths } from '../veins/network'
+import { networkStats, widestVein } from '../veins/network'
 import type { Settings } from '../lib/settings'
 import { formatLength, formatLong } from '../lib/units'
 import type { Stats } from '../useVeins'
@@ -13,8 +13,8 @@ import { widthSettings } from '../lib/settings'
 // measurements panel.
 
 const TOOLS: { id: Tool; label: string; icon: IconName; key: string; tip: string }[] = [
-  { id: 'roots', label: 'Roots', icon: 'draw', key: 'O', tip: 'Click to add a root, where veins start. Drag a root to move it; Alt-click one to remove it.' },
-  { id: 'pan', label: 'Pan', icon: 'pan', key: 'H', tip: 'Drag to move the view. Holding Space pans with any tool.' },
+  { id: 'roots', label: 'Roots', icon: 'draw', key: 'O', tip: 'Click to add a root where veins start, drag one to move it, or Alt-click one to remove it.' },
+  { id: 'pan', label: 'Pan', icon: 'pan', key: 'H', tip: 'Drag to move the view; holding Space pans with any tool.' },
 ]
 
 const TOOL_CAPTION: Record<Tool, string> = {
@@ -69,14 +69,14 @@ export function Dock({ running, stopping, canGrow, onGrow, onPause, onStep, onRe
         {running
           ? <Button className="primary" shortcut="Space" unavailable={stopping && 'Stopping after the current step…'} tip="Pause the growth. Press Grow to carry on." onClick={onPause}>
             <Icon name="pause" />{stopping ? 'Stopping…' : 'Pause'}</Button>
-          : <Button className="primary" shortcut="Space" unavailable={canGrow} tip="Grow the veins until every attractor is reached or you pause. Growth settings can change while they grow." onClick={onGrow}>
+          : <Button className="primary" shortcut="Space" unavailable={canGrow} tip="Grow the veins until every attractor is reached or you pause, changing growth settings as they grow if you like." onClick={onGrow}>
             <Icon name="play" />Grow</Button>}
         <Button shortcut="S" unavailable={busy || canGrow} tip="Grow by a single step." onClick={onStep}><Icon name="step" /><span className="compact-label">Step</span></Button>
-        <Button shortcut="R" unavailable={canReset} tip="Go back to the roots, before any growth. Undo brings the veins back." onClick={onReset}><Icon name="reset" /><span className="compact-label">Reset</span></Button>
+        <Button shortcut="R" unavailable={canReset} tip="Go back to the roots, before any growth; Undo brings the veins back." onClick={onReset}><Icon name="reset" /><span className="compact-label">Reset</span></Button>
       </div>
       <span className="timeline-status" role="status" aria-live={running ? 'off' : 'polite'} data-warning={warning} data-tip={typeof status === 'string' && status.length > 90 ? status : undefined}>{status}</span>
       <div className="transport" role="group" aria-label="History">
-        <Button className="icon-button" label="Undo" shortcut="⌘Z" unavailable={!canUndo && 'Nothing to undo yet.'} tip="Undo the last change. Undoing while veins grow pauses them first." onClick={onUndo}><Icon name="undo" /></Button>
+        <Button className="icon-button" label="Undo" shortcut="⌘Z" unavailable={!canUndo && 'Nothing to undo yet.'} tip="Undo the last change, pausing growth first if the veins are growing." onClick={onUndo}><Icon name="undo" /></Button>
         <Button className="icon-button" label="Redo" shortcut="⇧⌘Z" unavailable={!canRedo && 'Nothing to redo.'} tip="Redo the change you undid." onClick={onRedo}><Icon name="redo" /></Button>
       </div>
     </div>
@@ -90,16 +90,17 @@ export const Inspector = memo(function Inspector({ s, stats, net, attractors, ro
   const n = networkStats(net.x, net.y, net.parent, net.joins, net.points)
   const L = (mm: number) => formatLength(mm, s.units, s.dpi, true)
   // Max width is a cap: how wide veins get depends on how many ends they feed, so show the widest.
-  let widest = 0
-  if (net.points > 1) { const w = veinWidths(net.parent, net.points, widthSettings(s)); for (let i = 0; i < w.length; i++) if (w[i] > widest) widest = w[i] }
-  const rows: [string, string, string][] = [
+  const widest = widestVein(net.parent, net.points, widthSettings(s))
+  const rows: [string, ReactNode, string][] = [
     ['Sheet', `${formatLength(s.width, s.units, s.dpi)} × ${formatLength(s.height, s.units, s.dpi)}`, 'Width × height of the sheet, which is also the size of every export.'],
     ['Vein points', n.points.toLocaleString(), 'Points the veins are made of, one segment length apart.'],
     ['Forks', n.forks.toLocaleString(), 'Vein points where a vein splits in two or more.'],
     ['Vein ends', n.ends.toLocaleString(), 'Veins that end freely, not in a loop.'],
-    ['Loops', n.loops.toLocaleString(), 'Places where veins from two sides met at an attractor and joined, closing a loop. Turn on Loops on the Grow tab.'],
-    ['Roots', roots.toLocaleString(), 'Where veins start. Add them with the Roots tool.'],
-    ['Attractors left', `${stats.live.toLocaleString()} of ${attractors.toLocaleString()}${stats.waiting ? ` · ${stats.waiting.toLocaleString()} waiting` : ''}`, 'Attractors not yet reached by a vein. With leaf growth, some wait until the growing outline reaches them.'],
+    ['Loops', n.loops.toLocaleString(), 'Places where veins from two sides met at an attractor and joined, closing a loop, with Loops on (Grow tab).'],
+    ['Roots', roots.toLocaleString(), 'Where veins start, added with the Roots tool.'],
+    // With leaf growth, the waiting count can go to the next line rather than be cut off in a narrow panel.
+    ['Attractors left', stats.waiting ? <><span className="then">{stats.live.toLocaleString()} of {attractors.toLocaleString()}</span> <span className="then">· {stats.waiting.toLocaleString()} waiting</span></>
+      : `${stats.live.toLocaleString()} of ${attractors.toLocaleString()}`, 'Attractors not yet reached by a vein; with leaf growth, some wait for the growing outline to reach them.'],
     ['Total length', formatLong(n.length, s.units), 'Length of every vein, to estimate plotter or laser time.'],
     ['Widest vein', widest ? L(widest) : '—', 'The widest vein, near the roots; Max width caps it, and a lower Murray exponent thickens veins faster.'],
     ['Segment', L(s.segment), 'Distance between neighbouring vein points.'],

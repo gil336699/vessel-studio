@@ -2,7 +2,7 @@
 // full precision, so a reopened design carries on growing exactly as if it had never stopped. Files carry a schema
 // name and version; a newer app version must still open version 1 files, filling in new settings with defaults.
 import type { Vec } from '../veins/geometry'
-import { placementKey, startGrowth, type Design, type Growth, type Imported } from './design'
+import { placementKey, startGrowth, type Design, type Growth, type Imported, type RootPlacement } from './design'
 import { sanitizeSettings } from './settings'
 
 export const SCHEMA = 'vessel-studio'
@@ -13,7 +13,7 @@ export class ProjectError extends Error {}
 
 type File = {
   schema: string; version: number; app?: string
-  settings: unknown; imported: Imported | null; roots: number[][]; attractors: number[]; placedFor?: string
+  settings: unknown; imported: Imported | null; roots: number[][]; rootsBy?: RootPlacement; attractors: number[]; placedFor?: string
   growth: { step: number; rng: number; idle: number; done: Growth['done']; x: number[]; y: number[]; parent: number[]; joins: number[]; used: number[] }
 }
 
@@ -22,7 +22,7 @@ export function projectJson(d: Design, app: string): string {
   d.growth.used.forEach((u, i) => { if (u) used.push(i) })
   const file: File = {
     schema: SCHEMA, version: VERSION, app,
-    settings: d.settings, imported: d.imported, roots: d.roots, attractors: Array.from(d.attractors), placedFor: d.placedFor,
+    settings: d.settings, imported: d.imported, roots: d.roots, rootsBy: d.rootsBy, attractors: Array.from(d.attractors), placedFor: d.placedFor,
     growth: { step: d.growth.step, rng: d.growth.rng, idle: d.growth.idle, done: d.growth.done, x: Array.from(d.growth.x), y: Array.from(d.growth.y), parent: Array.from(d.growth.parent), joins: Array.from(d.growth.joins), used },
   }
   return JSON.stringify(file)
@@ -45,6 +45,7 @@ const point = (p: unknown, what: string): Vec => {
   return [p[0], p[1]]
 }
 const DONE = new Set(['reached', 'stalled', 'out-of-reach', 'cap', 'empty'])
+const PLACEMENTS = new Set<string>(['shape', 'base', 'centre', 'row', 'edge'])
 
 // Reads a project file. Anything unreadable throws a ProjectError with a plain message, and the current
 // design is kept by the caller.
@@ -69,7 +70,7 @@ export function parseProject(text: string): Design {
     const rings = im.rings.map(ring => { if (!Array.isArray(ring)) throw new ProjectError('This project file is damaged: an outline isn’t a list of points.'); return ring.map(p => point(p, 'a point of the imported shape')) })
       .filter(ring => ring.length >= 3)
     if (!rings.length) throw new ProjectError('This project file is damaged: its imported shape has no outline.')
-    imported = { name: String(im.name ?? 'shape.svg'), sized: im.sized === 'css' || im.sized === 'illustrator' ? im.sized : 'file', width: im.width, height: im.height, rings }
+    imported = { name: String(im.name ?? 'shape.svg'), sized: im.sized === 'css' || im.sized === 'illustrator' || im.sized === 'points' ? im.sized : 'file', width: im.width, height: im.height, rings }
   }
   if (settings.shape === 'imported' && !imported) throw new ProjectError('This project uses an imported shape, but the shape isn’t in the file.')
   const g = f.growth
@@ -88,5 +89,7 @@ export function parseProject(text: string): Design {
       x: Float64Array.from(x), y: Float64Array.from(y), parent: Int32Array.from(parent), joins: Int32Array.from(joins), used: usedFlags }
   }
   // The saved attractors belong to the saved settings, so ordinary edits after opening keep them and the veins.
-  return { settings, imported, roots, attractors, placedFor: placementKey(settings, imported), growth }
+  // How the roots were placed; files from before 1.4.0 don't say, so their roots are treated as placed by hand.
+  const rootsBy = typeof f.rootsBy === 'string' && PLACEMENTS.has(f.rootsBy) ? f.rootsBy : undefined
+  return { settings, imported, roots, rootsBy, attractors, placedFor: placementKey(settings, imported), growth }
 }

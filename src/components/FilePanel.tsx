@@ -16,7 +16,7 @@ export const FilePanel = memo(function FilePanel({ s, change, contents, unsaved,
   const [pw, ph] = pixelSize(s.width, s.height, s.dpi)
   const pngBlocked = pngProblem(pw, ph)
   const fileUnits = s.units === 'in' ? 'inches' : s.units === 'pt' ? 'points' : s.units === 'px' ? 'pixels' : 'millimetres'
-  const nothing = !contents.length && 'Nothing is shown, so there’s nothing to export. Turn on Veins, Shape, Attractors or Roots in the bar above the sheet.'
+  const nothing = !contents.length && 'Nothing is shown, so there’s nothing to export. Turn on Veins, Outline, Attractors or Roots in the bar above the sheet.'
   return <>
     <Section title="Project">
       <p className="hint save-state">{unsaved ? <><span className="dot" aria-hidden="true" />Unsaved changes since the last save.</> : 'All changes saved.'}</p>
@@ -33,7 +33,7 @@ export const FilePanel = memo(function FilePanel({ s, change, contents, unsaved,
         <Button tip={`Veins at real size in ${fileUnits}, one path per vein with its own width, each part in its own group.`} unavailable={busy || nothing} onClick={() => onExport('svg')}>SVG</Button>
         <Button tip={`DXF in ${s.units === 'in' ? 'inches' : 'millimetres'}, veins as centre lines with each part on its own layer, for Fusion, CAD and CAM.`} unavailable={busy || nothing} onClick={() => onExport('dxf')}>DXF</Button>
       </div>
-      <p className="hint">{nothing || `Exports hold what the view shows: ${listWords(contents)}. SVG and DXF leave out the background, so laser software doesn’t engrave it. DXF has no line widths, so its veins are centre lines.${contents.some(c => c === 'the roots' || c === 'the attractors') ? ' Roots and attractors are markers: hide them in the bar above the sheet before exporting a file to cut.' : ''}`}
+      <p className="hint">{nothing || `Exports hold what the view shows: ${listWords(contents)}. SVG and DXF leave out the background, so laser software doesn’t engrave it. DXF has no line widths, so its veins are centre lines.${contents.some(c => c === 'the roots' || c === 'the attractors') ? ' Roots and attractors are markers, in the PNG too: hide them in the bar above the sheet before exporting a file to cut or print.' : ''}`}
         {fromFile ? ' The page matches the imported SVG: open the SVG in Illustrator, copy it all, and use Edit › Paste in Place in your file to line it up with your artwork.' : ''}</p>
     </Section>
 

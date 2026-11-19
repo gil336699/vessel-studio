@@ -31,6 +31,16 @@ export function veinWidths(parent: ArrayLike<number>, n: number, w: WidthSetting
   return out
 }
 
+// The widest vein drawn. Each vein from a point is drawn as wide as the point it grows to, so a root that forks at
+// once is never drawn at its own width, which feeds both forks: only points with a parent count.
+export function widestVein(parent: ArrayLike<number>, n: number, w: WidthSettings): number {
+  if (n < 2) return 0
+  const widths = veinWidths(parent, n, w)
+  let widest = 0
+  for (let v = 0; v < n; v++) if (parent[v] >= 0 && widths[v] > widest) widest = widths[v]
+  return widest
+}
+
 // A vein between forks: its points and its width. A chain's width never changes along it, because a point
 // with one child feeds exactly the ends its child does.
 // curves: the smooth curve through the points, one cubic a segment, when worked out for an export (safeCurves).

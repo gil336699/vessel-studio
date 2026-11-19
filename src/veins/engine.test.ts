@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { placeAttractors } from './attractors'
 import { Engine, type EngineState, type GrowthParams } from './engine'
-import { segmentsCross, type Ring } from './geometry'
-import { chains, feeds, networkStats, veinWidths } from './network'
+import type { Ring } from './geometry'
+import { chains, feeds, networkStats, veinWidths, widestVein } from './network'
 import { Region } from './region'
 import { defaultRoots, presetRings } from './shapes'
 
@@ -28,6 +28,25 @@ function segments(e: Engine): [number, number][] {
   for (let v = 0; v < e.points; v++) if (e.parent[v] >= 0) out.push([e.parent[v], v])
   for (let i = 0; i < e.joins.length; i += 2) out.push([e.joins[i], e.joins[i + 1]])
   return out
+}
+
+// Whether segments ab and cd meet: cross, touch, or overlap along a line, an independent check of the region's own
+// crossing test. It is cautious on purpose: a step that touches the edge, passes exactly through a corner of it, or
+// slides along it counts as leaving.
+function segmentsCross(ax: number, ay: number, bx: number, by: number, cx: number, cy: number, dx: number, dy: number): boolean {
+  const d1 = (dx - cx) * (ay - cy) - (dy - cy) * (ax - cx)
+  const d2 = (dx - cx) * (by - cy) - (dy - cy) * (bx - cx)
+  if ((d1 > 0 && d2 > 0) || (d1 < 0 && d2 < 0)) return false
+  const d3 = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax)
+  const d4 = (bx - ax) * (dy - ay) - (by - ay) * (dx - ax)
+  if ((d3 > 0 && d4 > 0) || (d3 < 0 && d4 < 0)) return false
+  if (d1 === 0 && d2 === 0) {
+    const t = (v: number, a: number, b: number) => (b - a !== 0 ? (v - a) / (b - a) : 0)
+    const useX = Math.abs(bx - ax) >= Math.abs(by - ay)
+    const s0 = useX ? t(cx, ax, bx) : t(cy, ay, by), s1 = useX ? t(dx, ax, bx) : t(dy, ay, by)
+    return Math.max(Math.min(s0, s1), 0) < Math.min(Math.max(s0, s1), 1)
+  }
+  return d1 !== d2 && d3 !== d4
 }
 
 function crossingsWithEdge(e: Engine, rings: Ring[]): number {
@@ -192,6 +211,16 @@ describe('network', () => {
     expect(w[1]).toBeCloseTo(0.2 * 2 ** (1 / 3), 12)
     expect(veinWidths(parent, 6, { rule: 'murray', tip: 0.2, max: 0.22, exponent: 3 })[1]).toBe(0.22)
     expect(Array.from(veinWidths(parent, 6, { rule: 'even', tip: 0.3, max: 5, exponent: 3 }))).toEqual([0.3, 0.3, 0.3, 0.3, 0.3, 0.3])
+  })
+
+  it('reads the widest vein drawn, not the width of a root that forks at once, which no vein is drawn at', () => {
+    const w = { rule: 'murray' as const, tip: 0.2, max: 5, exponent: 2 }
+    // A root that forks at once: 0 → 1 and 0 → 2. The root feeds two ends; each vein drawn from it feeds one.
+    expect(widestVein([-1, 0, 0], 3, w)).toBeCloseTo(0.2, 12)
+    // One vein from the root that forks later is drawn at the width of both ends it feeds.
+    expect(widestVein(parent, 6, w)).toBeCloseTo(0.2 * Math.SQRT2, 12)
+    // Roots alone draw no vein.
+    expect(widestVein([-1, -1], 2, w)).toBe(0)
   })
 
   it('splits the tree into one path per vein between forks', () => {

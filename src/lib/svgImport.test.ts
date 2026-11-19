@@ -96,6 +96,35 @@ describe('reading SVG files', () => {
     expect(performance.now() - t).toBeLessThan(5000)
   })
 
+  it('places symbols, nested pages, switches and percentages where Chrome draws them', () => {
+    // Each case's box, as Chrome's getBBox gives it on a 100 mm page of 100 user units (Chrome 2026, 15 cases).
+    const page = (body: string) => `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="100mm" height="100mm" viewBox="0 0 100 100">${body}</svg>`
+    const symbol = (vb: string, aspect: string, use: string) => page(`<defs><symbol id="s" viewBox="${vb}"${aspect ? ` preserveAspectRatio="${aspect}"` : ''}><rect width="${vb.split(' ')[2]}" height="${vb.split(' ')[3]}"/></symbol></defs><use href="#s" ${use}/>`)
+    const cases: [string, string, number[]][] = [
+      ['symbol, use without width and height', symbol('0 0 10 10', '', 'x="10" y="10"'), [10, 10, 110, 110]],
+      ['symbol, use with width only', symbol('0 0 10 10', '', 'x="10" y="10" width="30"'), [10, 45, 40, 75]],
+      ['symbol, none', symbol('0 0 10 10', 'none', 'x="10" y="10" width="20" height="60"'), [10, 10, 30, 70]],
+      ['symbol, xMinYMin meet', symbol('0 0 10 20', 'xMinYMin meet', 'width="60" height="60"'), [0, 0, 30, 60]],
+      ['symbol, xMaxYMax meet', symbol('0 0 10 20', 'xMaxYMax meet', 'width="60" height="60"'), [30, 0, 60, 60]],
+      ['symbol, xMidYMid slice', symbol('0 0 10 20', 'xMidYMid slice', 'width="60" height="60"'), [0, -30, 60, 90]],
+      ['symbol, use width 50%', symbol('0 0 10 20', '', 'width="50%" height="50%"'), [12.5, 0, 37.5, 50]],
+      ['symbol with x and y (SVG 2)', page('<defs><symbol id="s" x="20" y="20" width="10" height="10" viewBox="0 0 10 10"><rect width="10" height="10"/></symbol></defs><use href="#s"/>'), [20, 20, 30, 30]],
+      ['switch, systemLanguage', page('<switch><rect systemLanguage="xx" x="0" y="0" width="10" height="10"/><rect x="60" y="60" width="10" height="10"/></switch>'), [60, 60, 70, 70]],
+      ['nested svg with a viewBox', page('<svg x="10" y="10" width="40" height="40" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>'), [10, 10, 50, 50]],
+      ['nested svg, no width or height', page('<svg viewBox="0 0 10 10"><rect width="5" height="5"/></svg>'), [0, 0, 50, 50]],
+      ['nested svg, width 50%', page('<svg width="50%" height="50%" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>'), [0, 0, 50, 50]],
+      ['nested svg, xMaxYMid meet', page('<svg width="80" height="40" viewBox="0 0 10 10" preserveAspectRatio="xMaxYMid meet"><rect width="10" height="10"/></svg>'), [40, 0, 80, 40]],
+      ['rect in percent', page('<rect x="10%" y="10%" width="50%" height="20%"/>'), [10, 10, 60, 30]],
+    ]
+    for (const [name, svg, want] of cases) {
+      const d = readSvgDrawing(svg)
+      const got = boxOf(d.paths.map(p => p.points)).map(v => Math.round(v * 100) / 100)
+      expect([name, got]).toEqual([name, want])
+    }
+    // A hidden first child of a switch is still the one it draws, so nothing is drawn, as in Chrome.
+    expect(() => readSvgDrawing(page('<switch><g display="none"><rect width="10" height="10"/></g><rect x="50" y="50" width="20" height="20"/></switch>'))).toThrow(/no paths/)
+  })
+
   it('reads shape sizes given with units', () => {
     const d = readSvgDrawing(`<svg xmlns="http://www.w3.org/2000/svg" width="200mm" height="200mm" viewBox="0 0 755.906 755.906">
       <rect x="1in" y="0" width="50px" height="20mm"/><circle cx="100" cy="100" r="1cm"/></svg>`)

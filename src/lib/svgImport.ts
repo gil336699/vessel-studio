@@ -3,14 +3,15 @@
 // TypeScript with no DOM, so it runs in tests too. Curves and arcs are flattened into short straight
 // segments and transforms are applied.
 import type { Vec } from '../veins/geometry'
-// How a file's size was found: 'file' it says so; 'css' assumed 96 per inch; 'illustrator' assumed 72 per inch.
-export type SizedBy = 'file' | 'css' | 'illustrator'
+// How a file's size was found: 'file' it says so; 'css' assumed 96 per inch; 'illustrator' assumed 72 per inch;
+// 'points' read again at 72 per inch, as the person importing it chose.
+export type SizedBy = 'file' | 'css' | 'illustrator' | 'points'
 
 export type SvgPath = { closed: boolean; points: Vec[]; element: number } // element: subpaths of one compound path share it
 export type SvgDrawing = {
   width: number; height: number // the page, in mm
   paths: SvgPath[] // in file order
-  units: SizedBy // 'file': the file gives its size; 'css': assumed 96 per inch; 'illustrator': assumed 72 per inch
+  units: Exclude<SizedBy, 'points'> // 'file': the file gives its size; 'css': assumed 96 per inch; 'illustrator': assumed 72 per inch
   // True when the file draws no shapes, only pictures, and its paths are the outlines of the clipping masks
   // that trim them. Illustrator saves a shape it can't write as SVG this way: a picture of it, clipped to its outline.
   fromClip: boolean
@@ -281,14 +282,28 @@ function lengthMm(text: string | undefined): number | null {
 }
 const unitOf = (text: string | undefined) => /([a-zA-Z%]*)\s*$/.exec(text ?? '')?.[1].toLowerCase() ?? ''
 // A length in user units, as a shape's x, width or radius: a plain number or px as it is, absolute units at 96 user
-// units per inch, as SVG has them. NaN for a percentage or anything else.
+// units per inch, as SVG has them, and a percentage of `of`, the viewport's width, height or diagonal. NaN for
+// anything else.
 const PER_USER: Record<string, number> = { '': 1, px: 1, mm: 96 / 25.4, cm: 96 / 2.54, q: 96 / 101.6, in: 96, pt: 96 / 72, pc: 16 }
-function userLength(text: string | undefined, missing = 0): number {
+function userLength(text: string | undefined, missing = 0, of = NaN): number {
   if (text === undefined) return missing
   const m = /^\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*([a-zA-Z%]*)\s*$/.exec(text)
-  const unit = m?.[2].toLowerCase() ?? '%'
-  return m && unit in PER_USER ? Number(m[1]) * PER_USER[unit] : NaN
+  if (!m) return NaN
+  const unit = m[2].toLowerCase()
+  if (unit === '%') return (Number(m[1]) / 100) * of
+  return unit in PER_USER ? Number(m[1]) * PER_USER[unit] : NaN
 }
+// A viewport's width and height in user units, which percentages are of; a radius's are of its diagonal over √2.
+type Viewport = [number, number]
+const diagonal = ([w, h]: Viewport) => Math.sqrt((w * w + h * h) / 2)
+
+// The languages a viewer reads, for systemLanguage: the system's, as a browser has them, or English.
+const LANGUAGES = (() => {
+  try { const list = globalThis.navigator?.languages; return (list?.length ? [...list] : ['en']).map(l => l.toLowerCase()) } catch { return ['en'] }
+})()
+// Whether systemLanguage lets an element be drawn: when it's missing, or names a language the viewer reads.
+const readable = (value: string | undefined) => value === undefined || value.split(',').map(v => v.trim().toLowerCase())
+  .some(v => v !== '' && LANGUAGES.some(l => l === v || l.startsWith(`${v}-`) || v.startsWith(`${l}-`)))
 const at0 = (v: number) => (Number.isFinite(v) ? v : 0)
 
 function ellipsePoints(cx: number, cy: number, rx: number, ry: number, tol: number): Vec[] {
@@ -298,10 +313,10 @@ function ellipsePoints(cx: number, cy: number, rx: number, ry: number, tol: numb
   return Array.from({ length: n }, (_, i): Vec => [cx + rx * Math.cos((i / n) * Math.PI * 2), cy + ry * Math.sin((i / n) * Math.PI * 2)])
 }
 
-function rectPoints(a: Attributes, tol: number): Vec[] | null {
-  const x = at0(userLength(a.x)), y = at0(userLength(a.y)), w = userLength(a.width, NaN), h = userLength(a.height, NaN)
+function rectPoints(a: Attributes, tol: number, vp: Viewport): Vec[] | null {
+  const x = at0(userLength(a.x, 0, vp[0])), y = at0(userLength(a.y, 0, vp[1])), w = userLength(a.width, NaN, vp[0]), h = userLength(a.height, NaN, vp[1])
   if (!(w > 0 && h > 0)) return null
-  let rx = userLength(a.rx, NaN), ry = userLength(a.ry, NaN)
+  let rx = userLength(a.rx, NaN, vp[0]), ry = userLength(a.ry, NaN, vp[1])
   if (!Number.isFinite(rx)) rx = Number.isFinite(ry) ? ry : 0
   if (!Number.isFinite(ry)) ry = rx
   rx = Math.min(Math.max(0, rx), w / 2); ry = Math.min(Math.max(0, ry), h / 2)
@@ -312,7 +327,7 @@ function rectPoints(a: Attributes, tol: number): Vec[] | null {
 }
 
 // Every path drawn by one element, in its own coordinates. Open paths whose ends meet count as closed.
-function pathsOf(name: string, a: Attributes, tol: number): { closed: boolean; points: Vec[] }[] {
+function pathsOf(name: string, a: Attributes, tol: number, vp: Viewport): { closed: boolean; points: Vec[] }[] {
   const out: { closed: boolean; points: Vec[] }[] = []
   const add = (points: Vec[], closed: boolean) => {
     if (points.length < 2) return
@@ -325,17 +340,17 @@ function pathsOf(name: string, a: Attributes, tol: number): { closed: boolean; p
     } else out.push({ closed: false, points })
   }
   if (name === 'path' && a.d) for (const sub of parsePathData(a.d, tol)) add(sub.points, sub.closed)
-  else if (name === 'rect') { const p = rectPoints(a, tol); if (p) add(p, true) }
-  else if (name === 'circle') { const r = userLength(a.r, NaN); if (r > 0) add(ellipsePoints(at0(userLength(a.cx)), at0(userLength(a.cy)), r, r, tol), true) }
+  else if (name === 'rect') { const p = rectPoints(a, tol, vp); if (p) add(p, true) }
+  else if (name === 'circle') { const r = userLength(a.r, NaN, diagonal(vp)); if (r > 0) add(ellipsePoints(at0(userLength(a.cx, 0, vp[0])), at0(userLength(a.cy, 0, vp[1])), r, r, tol), true) }
   else if (name === 'ellipse') {
-    const rx = userLength(a.rx, NaN), ry = userLength(a.ry ?? a.rx, NaN)
-    if (rx > 0 && ry > 0) add(ellipsePoints(at0(userLength(a.cx)), at0(userLength(a.cy)), rx, ry, tol), true)
+    const rx = userLength(a.rx, NaN, vp[0]), ry = a.ry === undefined ? rx : userLength(a.ry, NaN, vp[1])
+    if (rx > 0 && ry > 0) add(ellipsePoints(at0(userLength(a.cx, 0, vp[0])), at0(userLength(a.cy, 0, vp[1])), rx, ry, tol), true)
   } else if (name === 'polygon' || name === 'polyline') {
     const v = numbers(a.points ?? '')
     const points: Vec[] = []
     for (let k = 0; k + 1 < v.length; k += 2) points.push([v[k], v[k + 1]])
     add(points, name === 'polygon')
-  } else if (name === 'line') add([[at0(userLength(a.x1)), at0(userLength(a.y1))], [at0(userLength(a.x2)), at0(userLength(a.y2))]], false)
+  } else if (name === 'line') add([[at0(userLength(a.x1, 0, vp[0])), at0(userLength(a.y1, 0, vp[1]))], [at0(userLength(a.x2, 0, vp[0])), at0(userLength(a.y2, 0, vp[1]))]], false)
   return out
 }
 
@@ -369,7 +384,7 @@ function expandUses(body: string): string {
   // The root's viewport in user units: its viewBox, or its width and height.
   const root = attributesOf(/<(?:svg:)?svg\b([^>]*)>/i.exec(body)?.[1] ?? '')
   const rootBox = numbers(root.viewbox ?? '')
-  const viewport: [number, number] = rootBox.length === 4 ? [rootBox[2], rootBox[3]] : [userLength(root.width, 0), userLength(root.height, 0)]
+  const viewport: Viewport = rootBox.length === 4 ? [rootBox[2], rootBox[3]] : [userLength(root.width, 0), userLength(root.height, 0)]
   for (let depth = 0; depth < 3 && /<(?:svg:)?use\b/i.test(body); depth++) {
     const byId = elementsById(body)
     // Copies are counted as they're made, so a file that copies its copies is refused before it fills memory.
@@ -384,27 +399,35 @@ function expandUses(body: string): string {
       const own = attributesOf(start[2])
       let fit = ''
       if (start[1].toLowerCase().replace(/^svg:/, '') === 'symbol') {
-        // A use without a width or height fills the viewport, 100 % as browsers have it.
-        const vb = numbers(own.viewbox ?? ''), w = userLength(a.width, viewport[0]), h = userLength(a.height, viewport[1])
-        if (vb.length === 4 && vb[2] > 0 && vb[3] > 0 && w > 0 && h > 0) fit = ` matrix(${viewBoxFit(vb, w, h, own.preserveaspectratio).join(' ')})`
+        // A use without a width or height takes the symbol's own (SVG 2), or fills the viewport, 100 % as browsers
+        // have it; a symbol can say where it goes, too.
+        const vb = numbers(own.viewbox ?? ''), w = userLength(a.width ?? own.width, viewport[0], viewport[0]), h = userLength(a.height ?? own.height, viewport[1], viewport[1])
+        const sx = at0(userLength(own.x, 0, viewport[0])), sy = at0(userLength(own.y, 0, viewport[1]))
+        if (sx || sy) fit = ` translate(${sx} ${sy})`
+        if (vb.length === 4 && vb[2] > 0 && vb[3] > 0 && w > 0 && h > 0) fit += ` matrix(${viewBoxFit(vb, w, h, own.preserveaspectratio).join(' ')})`
       }
       // The copy loses its id, so it isn't copied again, and a symbol becomes a group that's drawn.
       const copy = target.replace(/^<(?:svg:)?symbol\b/i, '<g').replace(/<\/(?:svg:)?symbol\s*>$/i, '</g>').replace(/^(<[^>]*?)\sid\s*=\s*("[^"]*"|'[^']*')/, '$1')
       const keep = ['style', 'class', 'display', 'clip-path'].filter(k => a[k] !== undefined).map(k => ` ${k}="${a[k].replace(/"/g, '&quot;')}"`).join('')
       made += copy.length
       if (made > MAX_EXPANDED) throw new SvgShapeError(TOO_DETAILED)
-      return `<g transform="${a.transform ?? ''} translate(${at0(userLength(a.x))} ${at0(userLength(a.y))})${fit}"${keep}>${copy}</g>`
+      return `<g transform="${a.transform ?? ''} translate(${at0(userLength(a.x, 0, viewport[0]))} ${at0(userLength(a.y, 0, viewport[1]))})${fit}"${keep}>${copy}</g>`
     })
   }
   return body
 }
 
-// The transform that puts a viewBox into a box w × h: evenly and centred, as preserveAspectRatio's default
-// "xMidYMid meet" has it, or stretched to fill with "none".
+// The transform that puts a viewBox into a box w × h, as preserveAspectRatio says: evenly, fitted inside it ("meet",
+// the default) or covering it ("slice"), and placed at the min, middle (the default) or max of each side; or
+// stretched to fill it, with "none".
 function viewBoxFit(vb: number[], w: number, h: number, aspect: string | undefined): Matrix {
-  if (aspect?.trim().toLowerCase().startsWith('none')) return [w / vb[2], 0, 0, h / vb[3], -vb[0] * (w / vb[2]), -vb[1] * (h / vb[3])]
-  const k = Math.min(w / vb[2], h / vb[3])
-  return [k, 0, 0, k, (w - vb[2] * k) / 2 - vb[0] * k, (h - vb[3] * k) / 2 - vb[1] * k]
+  const words = (aspect ?? '').trim().toLowerCase().split(/\s+/).filter(word => word !== '' && word !== 'defer')
+  const align = words[0] ?? 'xmidymid'
+  if (align === 'none') return [w / vb[2], 0, 0, h / vb[3], -vb[0] * (w / vb[2]), -vb[1] * (h / vb[3])]
+  const k = words[1] === 'slice' ? Math.max(w / vb[2], h / vb[3]) : Math.min(w / vb[2], h / vb[3])
+  const at = /^x(min|mid|max)y(min|mid|max)$/.exec(align)
+  const share = (where: string | undefined) => (where === 'min' ? 0 : where === 'max' ? 1 : 0.5)
+  return [k, 0, 0, k, (w - vb[2] * k) * share(at?.[1]) - vb[0] * k, (h - vb[3] * k) * share(at?.[2]) - vb[1] * k]
 }
 
 // Every path in a file, in millimetres from the page's top-left corner. tolerance: how far flattened curves
@@ -432,7 +455,8 @@ export function readSvgDrawing(text: string, tolerance = 0.02): SvgDrawing {
   const clipUses: { id: string; m: Matrix }[] = []
   let clipTotal = 0, pictures = 0, texts = 0
   // clip: the clipping path whose outline this element is part of; chose: a <switch> has found the child it draws
-  type Frame = { name: string; m: Matrix; skip: boolean; clip: string | null; chose?: boolean }
+  // vp: the viewport the element's children measure percentages against.
+  type Frame = { name: string; m: Matrix; skip: boolean; clip: string | null; chose?: boolean; vp: Viewport }
   const stack: Frame[] = []
   for (const tag of body.matchAll(/<(\/?)([A-Za-z_][\w:.-]*)([^>]*?)(\/?)>/g)) {
     const [, closing, rawName, rest, selfClosing] = tag
@@ -446,15 +470,16 @@ export function readSvgDrawing(text: string, tolerance = 0.02): SvgDrawing {
     const a = attributesOf(rest)
     const parent = stack[stack.length - 1]
     let m = parent ? parent.m : IDENTITY
+    let vp: Viewport = parent ? parent.vp : [0, 0]
     // A <switch> draws only its first child that a viewer can: Illustrator's "Preserve Illustrator Editing
     // Capabilities" puts its own data in a <foreignObject> first, and the artwork after it.
     let unchosen = false
     if (parent?.name === 'switch' && !parent.skip) {
-      if (!parent.chose && name !== 'foreignobject' && a.requiredextensions === undefined) parent.chose = true
+      if (!parent.chose && name !== 'foreignobject' && a.requiredextensions === undefined && readable(a.systemlanguage)) parent.chose = true
       else unchosen = true
     }
     const markers = ownExport && name === 'g' && (a.id === 'attractors' || a.id === 'roots')
-    const skip = Boolean(parent?.skip) || unchosen || markers || SKIP.has(name) || isHidden(a)
+    const skip = Boolean(parent?.skip) || unchosen || markers || SKIP.has(name) || isHidden(a) || !readable(a.systemlanguage)
     let clip: string | null = null
     if (name === 'clippath') {
       // objectBoundingBox clips are sized to whatever uses them, so they give no outline of their own.
@@ -476,6 +501,7 @@ export function readSvgDrawing(text: string, tolerance = 0.02): SvgDrawing {
         if ((w !== null && !px(unitOf(a.width))) || (h !== null && !px(unitOf(a.height)))) units = 'file'
         m = multiply([rootScale, 0, 0, rootScale, 0, 0], [1, 0, 0, 1, -vb[0], -vb[1]])
         pageW = vb[2] * rootScale; pageH = vb[3] * rootScale
+        vp = [vb[2], vb[3]]
       } else {
         rootScale = perPx // without a viewBox, user units are pixels whatever the size says
         if (w !== null && !px(unitOf(a.width))) units = 'file'
@@ -483,19 +509,22 @@ export function readSvgDrawing(text: string, tolerance = 0.02): SvgDrawing {
         const pw = Number(numbers(a.width ?? '')[0]), ph = Number(numbers(a.height ?? '')[0])
         pageW = w !== null && !px(unitOf(a.width)) ? w : (pw || 0) * rootScale
         pageH = h !== null && !px(unitOf(a.height)) ? h : (ph || 0) * rootScale
+        vp = [pageW / rootScale, pageH / rootScale]
       }
     } else if (name === 'svg') {
-      m = multiply(m, [1, 0, 0, 1, at0(userLength(a.x)), at0(userLength(a.y))])
-      // A nested viewBox is fitted to the nested size, as a symbol is.
-      const vb = numbers(a.viewbox ?? ''), w = userLength(a.width, NaN), h = userLength(a.height, NaN)
-      if (vb.length === 4 && vb[2] > 0 && vb[3] > 0 && w > 0 && h > 0) m = multiply(m, viewBoxFit(vb, w, h, a.preserveaspectratio))
+      m = multiply(m, [1, 0, 0, 1, at0(userLength(a.x, 0, vp[0])), at0(userLength(a.y, 0, vp[1]))])
+      // A nested page with no width or height fills the one round it, 100 %, and its viewBox is fitted to its size,
+      // as a symbol's is; percentages inside it are of its viewBox.
+      const vb = numbers(a.viewbox ?? ''), w = userLength(a.width, vp[0], vp[0]), h = userLength(a.height, vp[1], vp[1])
+      if (vb.length === 4 && vb[2] > 0 && vb[3] > 0 && w > 0 && h > 0) { m = multiply(m, viewBoxFit(vb, w, h, a.preserveaspectratio)); vp = [vb[2], vb[3]] }
+      else if (w > 0 && h > 0) vp = [w, h]
     }
     if (a.transform) m = multiply(m, parseTransform(a.transform))
     if (name === 'svg' && !parent) rootM = m
     const shape = ['path', 'rect', 'circle', 'ellipse', 'polygon', 'polyline', 'line'].includes(name)
     if (!skip && shape) {
       const tol = tolerance / Math.max(1e-12, matrixScale(m))
-      const found = pathsOf(name, a, tol)
+      const found = pathsOf(name, a, tol, vp)
       for (const path of found) {
         total += path.points.length
         if (total > MAX_POINTS) throw new SvgShapeError(TOO_DETAILED)
@@ -508,7 +537,7 @@ export function readSvgDrawing(text: string, tolerance = 0.02): SvgDrawing {
       const tol = tolerance / Math.max(1e-12, rootScale * matrixScale(m))
       const entry = clips.get(clip) ?? { shapes: [], elements: 0 }
       clips.set(clip, entry)
-      for (const path of pathsOf(name, a, tol)) {
+      for (const path of pathsOf(name, a, tol, vp)) {
         if (path.points.length < 3) continue
         clipTotal += path.points.length
         if (clipTotal > MAX_POINTS) throw new SvgShapeError(TOO_DETAILED)
@@ -518,7 +547,7 @@ export function readSvgDrawing(text: string, tolerance = 0.02): SvgDrawing {
     }
     // Pictures and text are drawn too, though they aren't outlines, so a clip they use counts.
     if (!parent?.skip && !isHidden(a) && !UNDRAWN.has(name)) { const id = clipOf(a, clipClass); if (id) clipUses.push({ id, m }) }
-    if (!selfClosing) stack.push({ name, m, skip, clip })
+    if (!selfClosing) stack.push({ name, m, skip, clip, vp })
   }
   if (!rootScale) throw new SvgShapeError('This file is not an SVG drawing.')
   // A file cut short, by a failed download or copy, has no closing tag. Its paths may be missing or broken.
