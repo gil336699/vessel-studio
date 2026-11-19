@@ -25,9 +25,9 @@ import { useVeins, type Status } from './useVeins'
 
 type TabId = 'grow' | 'shape' | 'style' | 'file'
 const APP_VERSION = '1.0.0'
-const SESSION_KEY = 'vein-studio:session'
-const SESSION_UNSAVED_KEY = 'vein-studio:session-unsaved'
-const QUICK_START_KEY = 'vein-studio:quick-start-dismissed'
+const SESSION_KEY = 'vessel-studio:session'
+const SESSION_UNSAVED_KEY = 'vessel-studio:session-unsaved'
+const QUICK_START_KEY = 'vessel-studio:quick-start-dismissed'
 // Local storage holds about 5 MB; a session bigger than this isn't kept, and the page says so.
 const SESSION_LIMIT = 4_500_000
 
@@ -49,7 +49,7 @@ const baseName = (s: Settings, imported: Imported | null) => {
   if (s.shape === 'imported' && imported) return `${imported.name.replace(/\.svg$/i, '')}-veins`
   const unit = s.units
   const v = (mm: number) => trimZeros(toUnits(mm, unit, s.dpi).toFixed(unit === 'in' ? 2 : unit === 'px' || unit === 'pt' ? 0 : 1))
-  return `vein-studio-${s.shape}-${v(s.width)}x${v(s.height)}${UNIT_LABEL[unit]}`
+  return `vessel-studio-${s.shape}-${v(s.width)}x${v(s.height)}${UNIT_LABEL[unit]}`
 }
 
 // Brings an imported drawing within the sheet's size limits, scaling it evenly if needed.
@@ -222,7 +222,7 @@ export function App() {
         run: () => void readProject(file),
       })
       else if (file.type.startsWith('image/')) void readPictureFile(file)
-      else setStatus({ text: `${file.name} isn’t an SVG, a picture or a Vein Studio project.`, warning: true })
+      else setStatus({ text: `${file.name} isn’t an SVG, a picture or a Vessel Studio project.`, warning: true })
     }
     window.addEventListener('dragover', over)
     window.addEventListener('drop', drop)
@@ -240,7 +240,7 @@ export function App() {
   const saveProject = async () => {
     if (busy) { setStatus({ text: busy }); return }
     const name = `${baseName(s, design.imported)}${EXTENSION}`
-    if (report(name, await saveFile(name, projectJson(model.current(), APP_VERSION), 'application/json', 'Vein Studio project'))) model.markSaved()
+    if (report(name, await saveFile(name, projectJson(model.current(), APP_VERSION), 'application/json', 'Vessel Studio project'))) model.markSaved()
   }
 
   const exportFile = async (kind: ExportKind) => {
@@ -300,7 +300,8 @@ export function App() {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target instanceof Element ? event.target : null
-      const typing = Boolean(target?.closest('input, select, textarea'))
+      // Sliders and switches take no typed letters, so shortcuts still work while one has focus.
+      const typing = Boolean(target?.closest('input:not([type=range]):not([type=checkbox]), select, textarea'))
       const mod = event.metaKey || event.ctrlKey
       const key = event.key.toLowerCase()
       if (event.key === 'Escape') { setShowHelp(false); setPending(null); if (!typing) setTool('roots'); return }
@@ -343,7 +344,7 @@ export function App() {
     </div>
 
     <header className="brand glass">
-      <div><p className="app-kicker">Space colonization</p><h1>Vein Studio</h1></div>
+      <div><p className="app-kicker">Space colonization</p><h1>Vessel Studio</h1></div>
       <button type="button" className="icon-button" aria-label="Keyboard shortcuts and help" data-tip="Keyboard shortcuts and the quick start." data-key="?" onClick={() => setShowHelp(true)}>?</button>
     </header>
 

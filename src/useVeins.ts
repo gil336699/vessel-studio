@@ -179,7 +179,7 @@ export function useVeins(initial: () => { design: Design; saved: boolean }, setS
 
   // The design after a settings change: new attractors (and a fresh start) when the shape or their placement
   // changes, otherwise the same veins with the new settings.
-  const plan = useCallback((cur: Design, patch: Partial<Settings>, imported: Imported | null, pic: Picture, roots?: Vec[]): { next: Design; restarts: boolean } => {
+  const plan = useCallback((cur: Design, patch: Partial<Settings>, imported: Imported | null, pic: Picture, roots?: Vec[]): { next: Design; restarts: boolean; short?: boolean } => {
     const settings = sanitizeSettings({ ...cur.settings, ...patch })
     const key = placementKey(settings, imported, pic?.name ?? null)
     const reshaped = (['width', 'height', 'margin', 'shape', 'invert'] as const).some(k => settings[k] !== cur.settings[k]) || imported !== cur.imported
@@ -189,7 +189,7 @@ export function useVeins(initial: () => { design: Design; saved: boolean }, setS
     const scaled = cur.roots.map(([x, y]): Vec => [(x * settings.width) / cur.settings.width, (y * settings.height) / cur.settings.height])
     const start = roots ?? (newShape ? startRoots(settings, region) : rootsFor(settings, region, reshaped ? scaled : cur.roots))
     const placed = key === cur.placedFor ? { points: cur.attractors, short: false } : placeFor(settings, region, pic ? fitPicture(pic, settings.width, settings.height) : null)
-    return { next: { settings, imported, roots: start, attractors: placed.points, placedFor: key, growth: startGrowth(start, placed.points.length / 2, settings.seed) }, restarts: true }
+    return { next: { settings, imported, roots: start, attractors: placed.points, placedFor: key, growth: startGrowth(start, placed.points.length / 2, settings.seed) }, restarts: true, short: placed.short }
   }, [])
 
   // A settings change. Ones that start the veins again wait for growth to stop; the rest apply live.
@@ -197,13 +197,15 @@ export function useVeins(initial: () => { design: Design; saved: boolean }, setS
     const apply = () => {
       const cur = current()
       const imported = opts.imported === undefined ? cur.imported : opts.imported
-      const { next, restarts } = plan(cur, patch, imported, pictureRef.current, opts.roots)
+      const { next, restarts, short } = plan(cur, patch, imported, pictureRef.current, opts.roots)
       remember(cur, key)
       setUnsaved(true)
       if (restarts) {
         commit(next)
         load(next)
-        if (hasGrown(cur) && !opts.quiet) statusRef.current({ text: 'The veins started again for the new shape or attractors. Undo brings them back.' })
+        const placed = next.attractors.length / 2
+        if (short) statusRef.current({ text: `Only ${placed.toLocaleString()} of ${next.settings.count.toLocaleString()} attractors fit${next.settings.placement === 'picture' ? ': the picture is too pale for more. Use a darker picture or fewer attractors.' : ' in this shape. Use fewer, or a larger shape.'}`, warning: true })
+        else if (hasGrown(cur) && !opts.quiet) statusRef.current({ text: 'The veins started again for the new shape or attractors. Undo brings them back.' })
         return
       }
       committed.current = { ...next, growth: cur.growth }

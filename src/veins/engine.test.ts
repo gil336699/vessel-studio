@@ -84,6 +84,17 @@ describe('engine', () => {
     for (let v = 0; v < engine.points; v++) expect(engine.region!.contains(engine.x[v], engine.y[v])).toBe(true)
   })
 
+  it('never leaves the shape, even when pulled hard against its edge', () => {
+    // A strong upward pull and wobble would carry veins out through the leaf's top edges without the guard.
+    const { engine, rings } = setup('leaf', 2500, { pull: 1, pullMode: 'up', wiggle: 1 })
+    run(engine)
+    expect(engine.points).toBeGreaterThan(1000)
+    expect(crossingsWithEdge(engine, rings)).toBe(0)
+    let outside = 0
+    for (let v = 0; v < engine.points; v++) if (!engine.region!.contains(engine.x[v], engine.y[v])) outside++
+    expect(outside).toBe(0)
+  })
+
   it('never crosses an obstacle: the ring\'s hole stays empty', () => {
     const { engine, rings } = setup('ring', 2000)
     run(engine)

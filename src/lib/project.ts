@@ -1,13 +1,13 @@
-// Project files (.vein.json): the settings, the shape, the roots, the attractors and the veins grown so far, at
+// Project files (.vessel.json): the settings, the shape, the roots, the attractors and the veins grown so far, at
 // full precision, so a reopened design carries on growing exactly as if it had never stopped. Files carry a schema
 // name and version; a newer app version must still open version 1 files, filling in new settings with defaults.
 import type { Vec } from '../veins/geometry'
 import { startGrowth, type Design, type Growth, type Imported } from './design'
 import { sanitizeSettings } from './settings'
 
-export const SCHEMA = 'vein-studio'
+export const SCHEMA = 'vessel-studio'
 export const VERSION = 1
-export const EXTENSION = '.vein.json'
+export const EXTENSION = '.vessel.json'
 
 export class ProjectError extends Error {}
 
@@ -39,11 +39,11 @@ const DONE = new Set(['reached', 'stalled', 'out-of-reach', 'cap', 'empty'])
 // design is kept by the caller.
 export function parseProject(text: string): Design {
   let raw: unknown
-  try { raw = JSON.parse(text) } catch { throw new ProjectError('This file isn’t a Vein Studio project: it isn’t JSON.') }
+  try { raw = JSON.parse(text) } catch { throw new ProjectError('This file isn’t a Vessel Studio project: it isn’t JSON.') }
   const f = raw as Partial<File> | null
-  if (!f || typeof f !== 'object' || f.schema !== SCHEMA) throw new ProjectError('This file isn’t a Vein Studio project.')
+  if (!f || typeof f !== 'object' || f.schema !== SCHEMA) throw new ProjectError('This file isn’t a Vessel Studio project.')
   if (!isNum(f.version) || f.version < 1) throw new ProjectError('This project file has no version, so it can’t be read.')
-  if (f.version > VERSION) throw new ProjectError(`This project was saved by a newer Vein Studio (file version ${f.version}). Reload the page to get the newest version, then open it again.`)
+  if (f.version > VERSION) throw new ProjectError(`This project was saved by a newer Vessel Studio (file version ${f.version}). Reload the page to get the newest version, then open it again.`)
   const settings = sanitizeSettings(f.settings)
   const attractors = Float64Array.from(nums(f.attractors, 'attractors'))
   if (attractors.length % 2) throw new ProjectError('This project file is damaged: an attractor is missing a coordinate.')

@@ -31,7 +31,7 @@ describe('project files', () => {
   })
 
   it('opens the version 1 file in test-fixtures, filling settings it lacks with defaults', () => {
-    const d = parseProject(readFileSync('test-fixtures/minimal-v1.vein.json', 'utf8'))
+    const d = parseProject(readFileSync('test-fixtures/minimal-v1.vessel.json', 'utf8'))
     expect(d.settings.units).toBe('mm')
     expect(d.settings.tipWidth).toBe(DEFAULTS.tipWidth)
     expect(d.settings.count).toBe(300)
@@ -41,11 +41,11 @@ describe('project files', () => {
   })
 
   it('refuses bad files with a plain message', () => {
-    const good = JSON.parse(readFileSync('test-fixtures/minimal-v1.vein.json', 'utf8'))
+    const good = JSON.parse(readFileSync('test-fixtures/minimal-v1.vessel.json', 'utf8'))
     const bad = (patch: object) => () => parseProject(JSON.stringify({ ...good, ...patch }))
     expect(() => parseProject('not json')).toThrow(ProjectError)
-    expect(() => parseProject('{"schema":"line-growth","version":1}')).toThrow(/isn’t a Vein Studio project/)
-    expect(bad({ version: 2 })).toThrow(/newer Vein Studio/)
+    expect(() => parseProject('{"schema":"line-growth","version":1}')).toThrow(/isn’t a Vessel Studio project/)
+    expect(bad({ version: 2 })).toThrow(/newer Vessel Studio/)
     expect(bad({ attractors: [1, 2, 3] })).toThrow(/missing a coordinate/)
     expect(bad({ growth: { ...good.growth, parent: [-1, 2, 1] } })).toThrow(/comes after it/)
     expect(bad({ growth: { ...good.growth, joins: [0, 9] } })).toThrow(/isn’t there/)

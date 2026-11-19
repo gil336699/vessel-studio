@@ -1,6 +1,6 @@
 # Rebuild notes: Gil's older SCA pages
 
-Vein Studio rebuilds four single-file pages Gil made in `HomeMadeTools`. They were left exactly as found. Reading them downloaded their OneDrive cloud copies, which changes nothing in the files, and their SHA-256 hashes are recorded below. None is in git.
+Vessel Studio rebuilds four single-file pages Gil made in `HomeMadeTools`. They were left exactly as found. Reading them downloaded their OneDrive cloud copies, which changes nothing in the files, and their SHA-256 hashes are recorded below. None is in git.
 
 | Page | File | Date | Size | SHA-256 (first 12) |
 | --- | --- | --- | --- | --- |
@@ -18,7 +18,7 @@ Vein Studio rebuilds four single-file pages Gil made in `HomeMadeTools`. They we
   - BioVessel adds inertia (a blend with the last heading) and random wiggle, then Murray widths with exponent 2.8.
 - **Morphic** runs the same rule, using Voronoi sites as attractors, and removes them after growth.
 
-Vein Studio's engine follows the papers, as Basic and BioVessel do. Tests run copies of Basic's `step()` and BioVessel's `grow()` beside the new engine, and require the same points to within 1e-6 after 120 steps. Vessel Lab's tip-only rule is dropped on purpose, for the reasons below.
+Vessel Studio's engine follows the papers, as Basic and BioVessel do. Tests run copies of Basic's `step()` and BioVessel's `grow()` beside the new engine, and require the same points to within 1e-6 after 120 steps. Vessel Lab's tip-only rule is dropped on purpose, for the reasons below.
 
 ## Problems measured in the old pages
 
@@ -43,10 +43,10 @@ Measured in headless Chrome on copies of the pages, with their default settings,
 
 ## Inventory: every old control, and where it went
 
-| Page | Old control | Old detail | In Vein Studio |
+| Page | Old control | Old detail | In Vessel Studio |
 | --- | --- | --- | --- |
 | Vessel Lab | Count | 50–2,000, default 1,500 | Attractors, 100–20,000 |
-| Vessel Lab | Scatter mode | Rect, Circle, Ring, Mask (SVG or a triangle) | Shape: Rectangle, Ellipse, Ring, Leaf, or an imported SVG |
+| Vessel Lab | Scatter mode | Rect, Circle, Ring, Mask (SVG or a triangle) | Shape: Leaf, Ellipse, Rectangle, Ring, Tree, or an imported SVG |
 | Vessel Lab | Shape scale | 10–120 %, 78 | Margin from the sheet edge, in real units |
 | Vessel Lab | Width, Height | 100–2,000 px | Sheet size in mm, in, pt or px, with presets |
 | Vessel Lab | Poisson radius | 0–100 | Placement: Even (blue noise, exact count) |
@@ -79,7 +79,7 @@ Measured in headless Chrome on copies of the pages, with their default settings,
 | Basic | Export PNG, JPG, SVG; Regenerate | | Export SVG, DXF, PNG; New pattern |
 | BioVessel | Mask brush, brush size, Reset mask | paint the region | Later: painting a shape. 1.0 has shapes and SVG import. |
 | BioVessel | Seed tool, Clear seeds | | Roots tool, Clear roots |
-| BioVessel | Presets Arterial, Neural, Capillary | inertia, wiggle, thickness, density | Presets, with the same three plus Leaf and Tree |
+| BioVessel | Presets Arterial, Neural, Capillary | inertia, wiggle, thickness, density | Presets: the same three, plus Leaf, Leaf with loops and Tree |
 | BioVessel | Inertia | 0–0.95, 0.6 | Keep heading |
 | BioVessel | Thickness | 1–15 | Max width |
 | BioVessel | Randomness | 0–1.5, 0.2 | Wiggle |

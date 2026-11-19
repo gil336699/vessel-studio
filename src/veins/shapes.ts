@@ -2,7 +2,24 @@
 // margin. Inverting puts the shape in a sheet-sized rectangle as a hole, so veins grow round it instead.
 import { ellipseRing, rectRing, type Ring, type Vec } from './geometry'
 
-export type ShapeKind = 'leaf' | 'ellipse' | 'rect' | 'ring' | 'imported'
+export type ShapeKind = 'leaf' | 'ellipse' | 'rect' | 'ring' | 'tree' | 'imported'
+
+// A tree: an elliptical crown on a narrow trunk, as one outline. Attractors in the trunk are few, so a vein from
+// the trunk's foot climbs straight up and only branches in the crown, as Runions' trees do (2007, Fig. 5).
+export function treeRing(x0: number, y0: number, x1: number, y1: number): Ring {
+  const cx = (x0 + x1) / 2, height = y1 - y0
+  const rx = (x1 - x0) / 2, ry = height * 0.36, cy = y0 + ry
+  const w = Math.max(0.5, Math.min(rx * 0.06, height * 0.025)) // trunk half-width
+  const t0 = Math.asin(Math.min(1, w / rx)) // angle from straight down where the trunk meets the crown
+  const steps = 140
+  const crown: Vec[] = []
+  // Round the crown from the trunk's right side, over the top, to its left side (y down, so +π/2 is the bottom).
+  for (let i = 0; i <= steps; i++) {
+    const a = Math.PI / 2 - t0 - (i / steps) * (2 * Math.PI - 2 * t0)
+    crown.push([cx + rx * Math.cos(a), cy + ry * Math.sin(a)])
+  }
+  return [[cx + w, y1], ...crown, [cx - w, y1]]
+}
 
 const LEAF_STEPS = 96
 
@@ -29,6 +46,7 @@ export function presetRings(kind: Exclude<ShapeKind, 'imported'>, width: number,
     case 'rect': return [rectRing(x0, y0, x1, y1)]
     case 'ellipse': return [ellipseRing(cx, cy, (x1 - x0) / 2, (y1 - y0) / 2)]
     case 'ring': return [ellipseRing(cx, cy, (x1 - x0) / 2, (y1 - y0) / 2), ellipseRing(cx, cy, ((x1 - x0) / 2) * 0.36, ((y1 - y0) / 2) * 0.36).reverse()]
+    case 'tree': return [treeRing(x0, y0, x1, y1)]
     case 'leaf': {
       // A leaf about 0.62 times as wide as it is long, as large as the sheet allows.
       const w = Math.min(x1 - x0, 0.62 * (y1 - y0))
@@ -49,6 +67,7 @@ export function defaultRoots(kind: ShapeKind, width: number, height: number, mar
   if (inverted) return [[width / 2, height - Math.max(1, m / 2)]]
   switch (kind) {
     case 'leaf': return [[width / 2, height - m - Math.max(1, (height - 2 * m) * 0.01)]]
+    case 'tree': return [[width / 2, height - m - 1]]
     case 'rect': return [[width / 2, height - m - 1]]
     case 'ring': return [[width / 2, height / 2 + ((height - 2 * m) / 2) * 0.68]]
     default: return [[width / 2, height / 2]]

@@ -1,1 +1,0 @@
-{"schema":"vein-studio","version":1,"app":"1.0.0","settings":{"units":"mm","width":100,"height":100,"margin":5,"shape":"ellipse","count":300,"seed":7,"segment":1,"kill":2},"imported":null,"roots":[[50,90]],"attractors":[30,40,50,50,60,70],"growth":{"step":2,"rng":12345,"idle":0,"done":null,"x":[50,50,50],"y":[90,89,88],"parent":[-1,0,1],"joins":[],"used":[1]}}

@@ -12,6 +12,8 @@ export type StageControls = { fit: () => void; zoomBy: (factor: number) => void 
 type View = { zoom: number; panX: number; panY: number }
 type Drag =
   | { kind: 'pan'; startX: number; startY: number; panX: number; panY: number }
+  // A press on empty sheet. It adds a root when released, unless it moved or a second finger made it a pinch.
+  | { kind: 'tap'; clientX: number; clientY: number }
   | { kind: 'root'; index: number; moved: boolean; x: number; y: number }
   | { kind: 'pinch'; distance: number; view: View; worldX: number; worldY: number }
 
@@ -202,6 +204,11 @@ export function Stage({ scene, settings, roots, region, tool, frameRef, controlR
     if (hit >= 0 && event.altKey) { onRemoveRoot(hit); setHover(null); return }
     if (hit >= 0) { drag.current = { kind: 'root', index: hit, moved: false, x: roots[hit][0], y: roots[hit][1] }; return }
     if (x < 0 || y < 0 || x > settings.width || y > settings.height) return
+    drag.current = { kind: 'tap', clientX: event.clientX, clientY: event.clientY }
+  }
+
+  const addRootAt = (clientX: number, clientY: number) => {
+    const [x, y] = toWorld(clientX, clientY)
     const p = inside(x, y)
     if (!p) { onNotice('Roots go inside the shape. Click inside it.'); return }
     if (!region.contains(x, y)) onNotice('That point is outside the shape, so the root went to the nearest point inside.')
@@ -222,6 +229,8 @@ export function Stage({ scene, settings, roots, region, tool, frameRef, controlR
       return
     }
     if (d?.kind === 'pan') { setView(v => ({ ...v, panX: d.panX + event.clientX - d.startX, panY: d.panY + event.clientY - d.startY })); return }
+    // A press that moves is a drag, not a tap, so it adds no root.
+    if (d?.kind === 'tap' && Math.hypot(event.clientX - d.clientX, event.clientY - d.clientY) > 8) drag.current = null
     const [x, y] = toWorld(event.clientX, event.clientY)
     if (d?.kind === 'root') {
       const p = inside(x, y)
@@ -249,6 +258,7 @@ export function Stage({ scene, settings, roots, region, tool, frameRef, controlR
       setMoving(null)
       setCursor(space.current.down ? 'grab' : toolCursor)
       if (d?.kind === 'root' && d.moved && event.type === 'pointerup') onMoveRoot(d.index, d.x, d.y)
+      if (d?.kind === 'tap' && event.type === 'pointerup') addRootAt(d.clientX, d.clientY)
     }
   }
 

@@ -3,7 +3,7 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   // Relative asset paths, so the built site works from any address: a GitHub Pages
-  // subfolder such as /vein-studio/, another host, or a custom domain.
+  // subfolder such as /vessel-studio/, another host, or a custom domain.
   base: './',
   plugins: [react()],
   worker: { format: 'es' },

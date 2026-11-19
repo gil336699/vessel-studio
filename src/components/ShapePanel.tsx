@@ -20,6 +20,7 @@ const shapes = (imported: boolean): Option<ShapeKind>[] => [
   { value: 'ellipse', label: 'Ellipse', tip: 'Grow inside the circle or oval that fits the sheet, inset by the margin.' },
   { value: 'rect', label: 'Rectangle', tip: 'Grow inside the sheet, inset by the margin.' },
   { value: 'ring', label: 'Ring', tip: 'Grow inside a ring: the hole in the middle is an obstacle the veins go round.' },
+  { value: 'tree', label: 'Tree', tip: 'A round crown on a narrow trunk: a vein climbs the trunk and branches in the crown.' },
   { value: 'imported', label: 'Imported', tip: 'Grow inside the closed shapes of an SVG you imported. Shapes inside shapes are holes.', unavailable: !imported && 'Import an SVG first, with the button below.' },
 ]
 const ROOTS: { id: RootPlacement; label: string; tip: string }[] = [

@@ -36,7 +36,7 @@ export function HelpDialog({ onClose, onQuickStart }: { onClose: () => void; onQ
     <h2 id="help-title">Keyboard shortcuts</h2>
     <dl>{SHORTCUTS.map(([keys, action]) => <div key={keys}><dt><kbd>{keys}</kbd></dt><dd>{action}</dd></div>)}</dl>
     <p className="hint">On touch screens, one finger adds or moves roots and two fingers pan and zoom. On Windows, use Ctrl for ⌘.</p>
-    <p className="hint">Vein Studio grows veins by space colonization (Runions et al. 2005 and 2007): attractors fill the shape, each pulls on its nearest vein, and veins grow toward them until every one is reached.</p>
+    <p className="hint">Vessel Studio grows veins by space colonization (Runions et al. 2005 and 2007): attractors fill the shape, each pulls on its nearest vein, and veins grow toward them until every one is reached.</p>
     <div className="confirm-actions">
       <button type="button" data-tip="Show the three-step guide again." onClick={onQuickStart}>Show quick start</button>
       <button type="button" className="primary" data-autofocus onClick={onClose}>Close</button>

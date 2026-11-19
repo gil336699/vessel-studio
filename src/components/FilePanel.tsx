@@ -23,7 +23,7 @@ export const FilePanel = memo(function FilePanel({ s, change, contents, unsaved,
       <p className="hint save-state">{unsaved ? <><span className="dot" aria-hidden="true" />Unsaved changes since the last save.</> : 'All changes saved.'}</p>
       <div className="button-row three">
         <Button tip="Start a new design with the default settings." onClick={onNew}>New</Button>
-        <Button tip="Open a Vein Studio project file (.vein.json)." shortcut="⌘O" onClick={onOpen}>Open…</Button>
+        <Button tip="Open a Vessel Studio project file (.vessel.json)." shortcut="⌘O" onClick={onOpen}>Open…</Button>
         <Button className="primary" tip="Save the settings, shape, roots, attractors and every vein point as a project file you can reopen and keep growing exactly where it stopped." shortcut="⌘S" unavailable={busy} onClick={onSave}>Save</Button>
       </div>
       {openError && <p className="hint error" role="alert">{openError}</p>}

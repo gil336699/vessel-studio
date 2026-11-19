@@ -1,4 +1,4 @@
-# Research summary: space colonization for Vein Studio
+# Research summary: space colonization for Vessel Studio
 
 Written 2026-11-18 from the research kit in `~/Desktop/Space Colonization Research/` (3 notes and 12 PDFs, all read), Gil's four older SCA pages in `HomeMadeTools`, and Voronoi Studio's Leaf veins. The PDFs stay where they are, outside git; the table at the end says where each one is.
 
@@ -57,7 +57,7 @@ The applied papers keep the same order of sizes, D < dk < di. The liver model (E
 - **Thickness from the tips.** Murray widths make the hierarchy readable. A chain without forks keeps one width, which suits vector output (one path, one stroke width).
 - **Smooth the polyline.** Corner-cut or spline the points. Pulling branch points halfway to their parent softens forks that tend toward 90° (Runions 2007; thesis p. 60, 124–126).
 - **Avoid pile-ups.** Attractors pulling a point in opposite directions can stack points on one spot. A new point is refused if it lands within about half a segment of another vein point, which Voronoi Studio's Leaf veins also do.
-- **Measure, don't only look.** The gill study judged patterns by branch density, tip density and fractal dimension. Vein Studio shows tips, forks, loops and length as numbers.
+- **Measure, don't only look.** The gill study judged patterns by branch density, tip density and fractal dimension. Vessel Studio shows tips, forks, loops and length as numbers.
 
 ## 4. What can't be reused, by license
 
@@ -65,7 +65,7 @@ Nothing in the research folder is code, so nothing was copied. The papers and re
 
 | Item | License | What it means here |
 | --- | --- | --- |
-| Jason Webb, 2d-space-colonization-experiments | **CC BY-NC-SA 4.0** (non-commercial, share-alike) | Its code can't go into an MIT repo. Read it for ideas and numbers only. Voronoi Studio's veins re-implement the papers at his proportions, and Vein Studio does the same. |
+| Jason Webb, 2d-space-colonization-experiments | **CC BY-NC-SA 4.0** (non-commercial, share-alike) | Its code can't go into an MIT repo. Read it for ideas and numbers only. Voronoi Studio's veins re-implement the papers at his proportions, and Vessel Studio does the same. |
 | Coding Train sketch on editor.p5js.org (ardensch) | No license stated, so all rights reserved | Don't copy. The Coding Train's own site code is MIT. |
 | nicknikolov/space-colonization | MIT per README and package.json, though there's no LICENSE file | Usable with credit; not needed |
 | edap/ofxSpaceColonization | MIT per README | Usable with credit; not needed |
@@ -81,7 +81,7 @@ Nothing in the research folder is code, so nothing was copied. The papers and re
 
 ## 5. Gil's older SCA pages (this is a rebuild)
 
-Four single-file pages in `HomeMadeTools` are earlier versions of this tool, so Vein Studio follows the rebuild steps. The full inventory and the measured problems are in [rebuild.md](rebuild.md). They were left untouched; reading them only downloaded the cloud copies.
+Four single-file pages in `HomeMadeTools` are earlier versions of this tool, so Vessel Studio follows the rebuild steps. The full inventory and the measured problems are in [rebuild.md](rebuild.md). They were left untouched; reading them only downloaded the cloud copies.
 
 ## 6. Voronoi Studio's Leaf veins
 
@@ -90,7 +90,7 @@ Four single-file pages in `HomeMadeTools` are earlier versions of this tool, so 
 - **`growTree`** is open venation: nearest vein point within reach, kill before growth, Webb-style jitter of ±0.1, a crowding check at 0.45 D, and a pipe-model tip count.
 - **`loopVeins`** is closed venation: relative neighbourhood capped at 48 candidates, wait until all arrive, join at the source, inertia 0.5, and trimming of loose ends.
 
-Both are one-shot functions with fixed proportions (spacing size/75, D size/140, reach size/23), made to draw a Voronoi pattern's main veins. Vein Studio reuses the ideas: the grid queries, the relative-neighbourhood test, the join-at-source rule, the crowding check, and trimming. Its engine is new, though, because it must step, pause, save, resume bit for bit and take user settings. Both repos are Gil's and MIT, so code can move between them freely.
+Both are one-shot functions with fixed proportions (spacing size/75, D size/140, reach size/23), made to draw a Voronoi pattern's main veins. Vessel Studio reuses the ideas: the grid queries, the relative-neighbourhood test, the join-at-source rule, the crowding check, and trimming. Its engine is new, though, because it must step, pause, save, resume bit for bit and take user settings. Both repos are Gil's and MIT, so code can move between them freely.
 
 ## Sources
 

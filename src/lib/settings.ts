@@ -45,7 +45,7 @@ export const LIMITS = {
 
 const CHOICES = {
   units: ['mm', 'in', 'pt', 'px'],
-  shape: ['leaf', 'ellipse', 'rect', 'ring', 'imported'],
+  shape: ['leaf', 'ellipse', 'rect', 'ring', 'tree', 'imported'],
   placement: ['even', 'random', 'grid', 'edge', 'picture'],
   pullMode: ['up', 'down', 'left', 'right', 'out'],
   widthRule: ['murray', 'even'],
@@ -97,8 +97,8 @@ export const PRESETS: { id: PresetName; label: string; tip: string; values: Pres
     values: { shape: 'leaf', loops: false, leafGrowth: true, count: 4000, placement: 'even', inertia: 0.25, wiggle: 0.1, pull: 0, attraction: 0, widthRule: 'murray', exponent: 2.5, veinColor: '#2f4a1f' } },
   { id: 'loops', label: 'Leaf with loops', tip: 'Closed veins: veins from several sides meet and join, like a real leaf’s fine net.', roots: 'shape',
     values: { shape: 'leaf', loops: true, leafGrowth: true, count: 4500, placement: 'even', inertia: 0.1, wiggle: 0.05, pull: 0, attraction: 0, widthRule: 'murray', exponent: 2, veinColor: '#4a3b1f' } },
-  { id: 'tree', label: 'Tree', tip: 'A tree from the bottom of an ellipse crown, pulled upward, with more twigs near the crown’s edge.', roots: 'base',
-    values: { shape: 'ellipse', loops: false, leafGrowth: false, count: 2500, placement: 'edge', inertia: 0.3, wiggle: 0.15, pull: 0.35, pullMode: 'up', attraction: 0, widthRule: 'murray', exponent: 2.2, veinColor: '#3b2f25' } },
+  { id: 'tree', label: 'Tree', tip: 'A trunk that climbs to its crown and branches there, pulled upward, with more twigs near the crown’s edge.', roots: 'shape',
+    values: { shape: 'tree', loops: false, leafGrowth: false, count: 2500, placement: 'edge', inertia: 0.3, wiggle: 0.15, pull: 0.35, pullMode: 'up', attraction: 0, widthRule: 'murray', exponent: 2.2, veinColor: '#3b2f25' } },
   // Gil's BioVessel Pro presets: inertia, wiggle and thickness kept, density turned into a count.
   { id: 'arterial', label: 'Arterial', tip: 'Smooth, steady vessels that keep their heading, like arteries (BioVessel’s Arterial).', roots: 'centre',
     values: { shape: 'ellipse', loops: false, leafGrowth: false, count: 3500, placement: 'even', inertia: 0.8, wiggle: 0.1, pull: 0, attraction: 0, widthRule: 'murray', exponent: 3, veinColor: '#b3261e' } },

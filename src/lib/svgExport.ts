@@ -36,7 +36,7 @@ export function veinPaths(points: [number, number][], smooth: boolean): string[]
 export function designSvg(scene: Scene, s: Settings): string {
   let svg = `<?xml version="1.0" encoding="UTF-8"?>\n`
     + `<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" ${sizeAttributes(s)} viewBox="0 0 ${num(scene.width)} ${num(scene.height)}">\n`
-    + `<title>Vein Studio</title>\n`
+    + `<title>Vessel Studio</title>\n`
   if (scene.rings) {
     const d = scene.rings.map(r => `M${r.map(([x, y]) => `${num(x)} ${num(y)}`).join('L')}Z`).join('')
     svg += `<g ${layer('shape', 'Shape')} fill="none" stroke="${BOUNDARY_COLOR}" stroke-width="${num(boundaryWidth(s.tipWidth), 4)}" stroke-linejoin="round">`

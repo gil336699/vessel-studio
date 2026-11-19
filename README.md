@@ -1,0 +1,221 @@
+# Vessel Studio
+
+Vessel Studio is a browser app that grows leaf veins, blood vessels, trees and roots inside any shape, by space colonization (Runions et al. 2005 and 2007).
+
+- Attractors fill the shape, and each one pulls on its nearest vein. Veins grow toward them, a step at a time, until every attractor is reached.
+- Grow open veins or closed ones that join into loops, inside a leaf, an ellipse, a ring, a tree, or an outline imported from Illustrator.
+- Holes in the outline are obstacles the veins go round.
+- Veins thicken toward their roots by Murray's law.
+- Export the result at real size: SVG for Illustrator, Inkscape and pen plotters, DXF for Fusion and CAM, or PNG.
+
+It rebuilds Gil's older space colonization pages (Vessel Lab, Basic, BioVessel Pro and Morphic Lab Pro) as one app.
+
+**Use it online:** https://gil336699.github.io/vessel-studio/
+
+![The six presets, grown by the app's engine on A4: Leaf, open veins from the base with a midrib; Leaf with loops, a fine closed net; Tree, a trunk branching into its crown; Arterial, long smooth vessels from the centre; Neural, fine wandering branches; Capillary, a dense bed of small loops.](docs/presets.png)
+
+## Run
+
+```bash
+npm ci
+npm run dev
+```
+
+Open the address it prints, usually http://localhost:5173/. Use Node 22 or newer.
+
+## Publish
+
+GitHub Actions builds the app and publishes it to GitHub Pages on every push to `main` (`.github/workflows/pages.yml`). Pages was turned on once with `gh api -X POST repos/gil336699/vessel-studio/pages -f build_type=workflow`. The build uses relative paths (`base: './'`), so it also works from any other folder or host.
+
+## Layout
+
+- **The sheet** fills the window, and everything else floats over it on glass.
+- **Left:** tabs.
+  - **Grow:** presets, attractors, growth and feel.
+  - **Shape:** sheet size, the shape and the roots.
+  - **Style:** vein widths, colours and curves.
+  - **File:** projects and exports.
+- **Top:** the Roots and Pan tools, and switches for what's shown: Veins, Attractors, Shape and Roots. Every export holds exactly what's shown. Zoom sits there too.
+- **Bottom:** the dock, with Grow or Pause, Step, Reset, the status, and Undo and Redo.
+- **Right:** measurements: vein points, forks, ends, loops, roots, attractors left, total length, steps and speed.
+
+## Help in the app
+
+- Hover over any control, or focus it with the keyboard, to see what it does, with its shortcut.
+- A control that can't be used says why. For example, Grow after growth has finished says what's next.
+- A three-step quick start shows on the first visit. The **?** button lists every shortcut and brings the quick start back.
+- Changes that start the veins again (a new shape, new attractors, moving a root) say so in the status, and Undo brings the veins back.
+- Opening a project, starting a new design or importing over grown veins asks first, in the app's own dialog.
+
+## Workflow
+
+1. **Pick a preset** on the Grow tab: Leaf, Leaf with loops, Tree, Arterial, Neural or Capillary. Each sets the growth and a look, scaled to the sheet.
+2. **Pick the shape** on the Shape tab, or import an SVG outline. Choose where veins start with the root buttons, or click with the Roots tool.
+3. **Grow:** press Space, or Grow. Growth settings (lengths, loops, feel) change live while the veins grow. Settings that move attractors start the veins again.
+4. **Style:** Murray widths or one even width, the tip and largest width in real units, and colours.
+5. **Export** on the File tab, or save a project to carry on later exactly where it stopped.
+
+### With Illustrator
+
+- An SVG from Illustrator has no stated size. It's read at 72 pt per inch, as Illustrator writes it, and the sheet becomes its page.
+- Open the exported SVG, copy it all, and use **Edit › Paste in Place** to line it up with the original artwork.
+- Each part is its own layer: Shape, Veins, Attractors and Roots.
+- Each vein between two forks is one path with its own stroke width, in real units.
+
+### With pen plotters, lasers, Fusion and 3D printers
+
+- **Pen plotters:** set Width to Even for one pen. The SVG's groups are Inkscape layers too, for AxiDraw.
+- **Lasers:** SVG and DXF leave the background out, because a filled rectangle would be engraved. Veins are stroked centre lines; set cut or engrave in the laser software. Cutting a leaf skeleton needs the veins' outlines, which come later.
+- **Fusion and CAM:** DXF R12, in mm or inches, with veins as polylines (smooth curves as close polylines) on layer `VEINS`.
+- **3D printing:** keep veins at least 0.8 mm wide for a 0.4 mm nozzle (two lines). Set it with Tip width on the Style tab.
+
+## Feature reference
+
+### Shapes and roots
+
+| Choice | What it does |
+| --- | --- |
+| Leaf | An ovate leaf with a pointed tip, about 0.62 times as wide as it is long, as large as the sheet allows. Veins start at its base. |
+| Ellipse, Rectangle | The oval that fits the sheet, or the sheet itself, inside the margin. |
+| Ring | An ellipse with a hole a third of its size. The hole is an obstacle. |
+| Tree | A round crown on a narrow trunk. A vein climbs the trunk and branches in the crown, as Runions' trees do. |
+| Imported | Every closed path of an SVG, read even-odd, so a shape inside a shape is a hole. Open paths are left out, and the status says so. |
+| Grow outside the shape | The sheet with the shape as a hole, so veins wrap round it. |
+| Roots | Shape's own (a leaf's base, an ellipse's centre), Base, Centre, Row (along the bottom, for parallel veins), Edge (round the outline, growing in), or click with the Roots tool. Drag a root to move it, Alt-click it to remove it. |
+
+### Attractors
+
+| Placement | What it does |
+| --- | --- |
+| Even | Mitchell's best candidate with 12 tries a point: evenly spread, never on a grid. Smoothest veins. |
+| Random | Uniform at random, with clumps and gaps. |
+| Grid | A jittered square grid, like BioVessel Pro's. It can show its regularity. |
+| Edge | Crowded near the outline, so twigs fill a tree's crown edge (Runions 2007, Fig. 7). |
+| Picture | More attractors where a chosen picture is darker. The picture fits inside the sheet, centred. The project saves the attractors, not the picture. |
+
+Every placement gives exactly the count asked for. The one exception is a picture too pale to hold that many; then the status says how many fit. The same pattern number always gives the same points.
+
+### Exports
+
+| Export | Contents | Units |
+| --- | --- | --- |
+| SVG | Layers `shape`, `veins`, `attractors`, `roots`, each only when shown. One path per vein between forks, with its stroke width, smoothed through its points (Catmull–Rom) unless Smooth curves is off. No background. Very long veins are split at Illustrator's 32,000-point path limit. | mm, in, pt or px, as the sheet |
+| DXF | AutoCAD R12 text. Layers `VEINS` (centre-line polylines), `SHAPE`, `ATTRACTORS` and `ROOTS` (circles), each only when shown. y points up, as DXF expects. | mm, or in for inch sheets |
+| PNG | The sheet at its pixels per inch, in its colours, optionally transparent. The file records its pixels per inch, so Illustrator, InDesign and Photoshop place it at real size. | px |
+| Project | Settings, the imported shape, roots, attractors and every vein point at full precision, as `.vessel.json` (schema `vessel-studio`, version 1). Growth carries on exactly where it stopped. | mm |
+
+## Controls
+
+| Control | Effect |
+| --- | --- |
+| Count | Number of attractors, 100–20,000. |
+| New pattern | A new pattern number: new attractors and a new wiggle. |
+| Segment length | Distance between neighbouring vein points. |
+| Kill distance | How close a vein must come to use up an attractor. Smaller makes denser, finer veins (Runions 2005, Fig. 9). Keep it at least the segment length. |
+| Limit attraction distance | Off by default, as for Runions' leaves: every attractor pulls its nearest vein however far away. On, only veins within the distance feel it, and tips wander. |
+| Loops | Closed venation. An attractor pulls every vein point in its relative neighbourhood and waits until all of them arrive, then they join there with a real join, closing a loop. Veins less than 8 segments apart along the tree don't join, so no tiny bulbs. |
+| Leaf growth | The outline grows about the first root from 6 % to full size over the steps set. Attractors join in as it reaches them, so main veins form first (marginal growth, Runions 2005). |
+| Keep veins apart | Refuses a new point within 0.45 segments of another vein. A refused step uses up the attractors it would have reached. Off grows as the older pages did. |
+| Keep heading | Blends a growing vein's step with its last heading, 0–95 %. Side branches always start toward their own attractors. |
+| Wiggle | A seeded wobble on each step, 0–1.5. |
+| Pull | A steady pull, 0–1, up, down, left, right or out from the root (Runions 2007, Eq. 3). |
+| Speed | Steps per screen update, 1–40. |
+| Width | Murray's law (parent^n = sum of children^n, from the tip width at every end) or Even. |
+| Tip width, Max width, Murray exponent | Finest and widest vein in real units, and n from 1.5 to 4. Murray is 3, retinal arteries about 2.6, Runions' leaves 2. |
+| Colours, Smooth curves | Vein and sheet colours, and curves or straight segments. |
+| Sheet | Preset, units (mm, in, pt, px), width, height, pixels per inch, margin. |
+
+## Keyboard shortcuts
+
+| Keys | Action |
+| --- | --- |
+| Space | Grow or pause (hold Space and drag to pan) |
+| S | Grow one step |
+| R | Reset to the roots |
+| O, H | Roots and Pan tools |
+| Alt-click | Remove a root |
+| Scroll, pinch | Zoom |
+| +, −, F | Zoom in, out, fit |
+| 1, 2, 3, 4 | Veins, attractors, shape, roots |
+| ⌘Z, ⇧⌘Z | Undo, redo |
+| ⌘S, ⌘O | Save, open project |
+| Esc | Close a dialog, or go back to Roots |
+| ? | Shortcuts and quick start |
+
+## How it works
+
+Each step does three things.
+
+1. **Pair.** Every live attractor finds its nearest vein point. If that's closer than the kill distance, the attractor is used up. Otherwise it pulls, if the point is within the attraction distance and can see it past the shape's edges. With Loops on, it pulls every point of its relative neighbourhood instead: v counts unless some u is nearer both the attractor and v.
+2. **Grow.** Every pulled point grows one new point a segment length away. Its direction is the average of the unit vectors to its attractors, blended with Keep heading and Wiggle, plus Pull. A step that would leave the shape, cross an edge or land on another vein is refused.
+3. **Add.** The step's new points go in together, so the result never depends on visiting order.
+
+These rules make it fast and repeatable:
+
+- **A cached nearest point.** Each attractor's nearest vein point is cached and updated with only the new points of each step. That is exact, because vein points never move, and ties go to the older point as a full search would.
+- **Grids for the shape.** Inside tests use bands of edges and crossing tests walk a grid of edges, so imported outlines with thousands of points stay fast.
+- **The same result every time.** Everything is seeded, and the project file holds the whole state, the random generator's included.
+- **A worker.** The engine runs off the page and sends one frame at a time, after the page has drawn the last one. Frames carry only new points.
+
+**An honest note on its limits:**
+- It is a picture-making model, not a physiological one: Murray widths come from the number of vein ends each vein feeds, not from a flow solve. On a loop, a join takes the thinner end's width.
+- A vein can't grow round an obstacle to reach an attractor it can't see. It grows toward attractors it can see, and gets there in the end.
+- A handful of attractors can end up just beyond the kill distance of two veins, where no step is allowed. The status counts them: 0–7 of 2,500–4,000 in the presets.
+
+## Known limits
+
+Engine timings were measured in Node on this Mac (Apple silicon), best of 3 runs, 2026-11-18. In-app timings come from the production build driven in headless Chrome.
+
+| Design | Placing attractors | Steps | Vein points | Grow (engine) | Per step | Steps/s |
+| --- | --- | --- | --- | --- | --- | --- |
+| Leaf, A4, 4,000 attractors | 64 ms | 266 | 6,286 | 66 ms | 0.25 ms | 4,003 |
+| Leaf, A3, 20,000, 0.5 mm segments | 377 ms | 786 | 49,893 | 2,055 ms | 2.61 ms | 382 |
+| Leaf with loops, A4, 4,500 | 74 ms | 269 | 12,984 | 295 ms | 1.10 ms | 913 |
+| Loops, A3, 20,000, 0.5 mm | 371 ms | 787 | 92,333 | 11,102 ms | 14.11 ms | 71 |
+| Capillary, A4, 5,000 | 82 ms | 140 | 17,949 | 1,240 ms | 8.86 ms | 113 |
+
+- **In the app** at the default Speed (3 steps a frame), growth is held to the screen: about 186 steps a second, so the A4 leaf takes 1.5 s. At Speed 40 the A3 leaf of 20,000 attractors took 2.06 s, as fast as the engine alone.
+- **In a background tab** growth carries on at about half the speed: 182 steps in 6 s at Speed 1, about 30 a second, against 60 in front.
+- **Size caps:** 20,000 attractors and 400,000 vein points. A session larger than about 4.5 MB isn't kept in the browser between visits, and the File tab says so; save a project instead.
+- **Loops are slower:** each source tests up to 48 nearby vein points for its neighbourhood.
+
+## Rebuilt from Gil's older pages
+
+Vessel Studio replaces four pages in `HomeMadeTools`, which were left untouched. Every old control is listed in [docs/rebuild.md](docs/rebuild.md) with where it went, or why it was dropped. Fixed old problems, as measured:
+
+- **Vessel Lab stopped after one step** with its defaults. Removing reached attractors deleted every one after the first, so 1,486 of 1,500 went.
+- **Vessel Lab's SVG held no veins.**
+- **Basic's SVG was white lines with no background.**
+- **No units, no seed, no save, no undo** anywhere.
+
+The engine follows the papers, as Basic and BioVessel did. Tests run copies of their growth steps beside it and match every vein point within 1e-6 mm for 120 steps. Vessel Lab's tip-only rule was dropped on purpose: with its default Max children of 1 it couldn't branch.
+
+## Development
+
+```bash
+npm run lint      # ESLint, zero warnings
+npm test          # Vitest
+npm run build     # type-check and build to dist/
+```
+
+| Folder | What's in it |
+| --- | --- |
+| `src/veins/` | The engine, plain TypeScript: `engine.ts` (growth), `region.ts` (shapes, inside and crossing tests), `attractors.ts`, `network.ts` (widths, veins between forks, smoothing, counts), `shapes.ts`, `geometry.ts`, `random.ts`, with tests, including `parity.test.ts` against the old pages |
+| `src/worker/` | The growth worker and its frame protocol (`runner.ts`), with a test |
+| `src/lib/` | Settings and presets, the design, project files, SVG, DXF and PNG exports, SVG import (from Line Growth), units and the renderer |
+| `src/components/` | The panels, bars, stage, tooltips, dialogs and tabs |
+| `src/useVeins.ts` | The page's model: the design, the worker, undo and saving state |
+| `docs/` | `research.md` (the algorithm and sources), `rebuild.md` (the old pages), `plan.md` (the 1.0 plan) |
+| `test-fixtures/` | Gil's Illustrator pill outlines and a version 1 project file |
+| `local/` | Not in git: QA scripts and probes |
+
+## Sources and credits
+
+- The method is from Runions, Fuhrer, Lane, Federl, Rolland-Lagan and Prusinkiewicz (2005), *Modeling and visualization of leaf venation patterns*, and from Runions, Lane and Prusinkiewicz (2007), *Modeling trees with a space colonization algorithm*. It was rebuilt from the papers; no code was copied.
+- Jason Webb's 2D experiments (CC BY-NC-SA 4.0) were read for ideas only.
+- The SVG reader and some interface parts come from Gil's own Line Growth (MIT).
+- See [docs/research.md](docs/research.md) for every source and its license.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

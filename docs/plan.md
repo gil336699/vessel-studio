@@ -1,4 +1,4 @@
-# Plan for Vein Studio 1.0
+# Plan for Vessel Studio 1.0
 
 Written 2026-11-18 with the "Starting a new app" checklist in the App Development Standard, §10.
 
@@ -9,7 +9,7 @@ Written 2026-11-18 with the "Starting a new app" checklist in the App Developmen
 
 ## Name
 
-Gil chose **Vein Studio** on 2026-11-18: public repo `gil336699/vein-studio`, MIT, published once this round passes. The other candidates were Branch Studio (easy to confuse with git branches), Space Colonization Studio (long, reads like a space game) and Venation Studio (a botanical word few makers know). "Growth Studio" style names were taken by Gil's own apps.
+**Vessel Studio**, repo `gil336699/vessel-studio`. On 2026-11-18 Gil first picked Vein Studio from the question card, then said "how about call it vessel studio". The name also echoes his old Vessel Lab. In the same card he chose a public repo, MIT, and publishing once this round passes. The other candidates were Branch Studio (easy to confuse with git branches), Space Colonization Studio (long, reads like a space game) and Venation Studio (a botanical word few makers know). `gil336699/vessel-studio` was free; other GitHub repos with that name have 0–2 stars.
 
 ## First version (1.0.0)
 
@@ -28,16 +28,16 @@ Gil chose **Vein Studio** on 2026-11-18: public repo `gil336699/vein-studio`, MI
 - A dock with Grow, Step, Reset, Undo and Redo, and a measurements panel.
 - Roots tool, Pan tool, view toggles and zoom.
 - Custom tooltips, in-app confirm dialogs, a three-step quick start and a ? dialog.
-- Presets: Leaf, Tree, Arterial, Neural, Capillary.
+- Presets: Leaf, Leaf with loops, Tree, Arterial, Neural, Capillary.
 
 **Files**
-- Project files (`.vein.json`) with a schema name and version, holding the full state, so growth continues bit for bit.
+- Project files (`.vessel.json`) with a schema name and version, holding the full state, so growth continues bit for bit.
 - Autosave, and undo for each change and each growth run.
 - Import an SVG outline at Illustrator's 72 pt per inch; other SVGs are read at 96 px per inch, with a note.
 - A picture for attractor density.
 - Exports at real size (mm, in, pt or px) that hold what the view shows:
-  - **SVG:** groups `veins`, `boundary`, `attractors`, `roots`; one path per vein between forks; stroke widths in mm.
-  - **DXF R12:** layers `VEINS`, `BOUNDARY`, `ATTRACTORS`, `ROOTS`.
+  - **SVG:** groups `shape`, `veins`, `attractors`, `roots`; one path per vein between forks; stroke widths in mm.
+  - **DXF R12:** layers `VEINS`, `SHAPE`, `ATTRACTORS`, `ROOTS`.
   - **PNG:** at the sheet's pixels per inch.
 
 **Checks**
@@ -45,7 +45,7 @@ Gil chose **Vein Studio** on 2026-11-18: public repo `gil336699/vein-studio`, MI
 - Parity tests against Basic's `step()` and BioVessel's `grow()`.
 - A save, reopen and continue test that matches an unbroken run bit for bit.
 - A worker test that sends one frame at a time.
-- Long headless runs of the production build from its `/vein-studio/` subfolder.
+- Long headless runs of the production build from its `/vessel-studio/` subfolder.
 
 ## Later (not in 1.0)
 
@@ -62,5 +62,5 @@ Gil chose **Vein Studio** on 2026-11-18: public repo `gil336699/vein-studio`, MI
 - [x] `base: './'` in `vite.config.ts`
 - [ ] Public GitHub repo with MIT license, README and CHANGELOG (Gil: publish after this round passes)
 - [ ] `ci.yml` and `pages.yml`, Pages turned on, homepage link set
-- [ ] CSS variables for colours, radii and sizes, light and dark, and the accessibility media queries
-- [ ] Tooltip layer, modal, tabs, quick start and ? dialog from the start
+- [x] CSS variables for colours, radii and sizes, light and dark, and the accessibility media queries
+- [x] Tooltip layer, modal, tabs, quick start and ? dialog from the start

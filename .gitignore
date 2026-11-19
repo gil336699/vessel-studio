@@ -8,8 +8,8 @@ coverage/
 .claude/
 
 # Files people make with the app
-*.vein.json
-!test-fixtures/*.vein.json
+*.vessel.json
+!test-fixtures/*.vessel.json
 *.dxf
 *.png
 !public/*.png
