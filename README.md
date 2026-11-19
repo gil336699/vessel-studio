@@ -57,10 +57,11 @@ GitHub Actions builds the app and publishes it to GitHub Pages on every push to 
 
 ### With Illustrator
 
-- An SVG from Illustrator has no stated size. It's read at 72 pt per inch, as Illustrator writes it, and the sheet becomes its page.
-- Open the exported SVG, copy it all, and use **Edit › Paste in Place** to line it up with the original artwork.
-- Each part is its own layer: Shape, Veins, Attractors and Roots.
+- An SVG from Illustrator has no stated size. Files from both Save As and Export As are recognised and read at 72 pt per inch, as Illustrator writes them, and the sheet becomes the page. Files saved with **Preserve Illustrator Editing Capabilities** work too.
+- In **Export As › SVG**, tick **Use Artboards**, so the page is the artboard. Then open the exported SVG, copy it all, and use **Edit › Paste in Place** to line it up with the original artwork.
+- Each part is its own group: Shape, Veins, Attractors and Roots. Illustrator opens them as groups in one layer (Object › Ungroup, or Release to Layers, splits them); Inkscape opens them as layers.
 - Each vein between two forks is one path with its own stroke width, in real units.
+- **Text, logos and maps** come in several parts: each letter, each island. Every part gets a root at its base, so all of it grows. Live type has no outlines; use **Type › Create Outlines** first. Copies made with `<use>` and symbols are read; clipping masks aren't applied, and the status says when the file has them.
 - **Outlined strokes.** A line saved with Outline Stroke or Expand comes in as a thin band: the line drawn twice, a stroke's width apart. Read as filled shapes, that leaves veins only the bands, about 1 mm wide. So two nested outlines that stay the same small distance apart all the way round (at most 3 % of the outline's size) are read as the one line they were. A boundary keeps its band's inner edge and a hole keeps its outer edge, so veins grow up to the drawn lines, never into them. Smaller outlines with the same band width are read the same way, and the status says how wide the bands were. To keep veins further off the lines, set **Edge clearance** on the Shape tab.
 
 Measured on Gil's five test shapes (2026-11-18, in `test-fixtures/`), each imported into the production build on its 381 mm (1080 pt) page and grown to the end with the Leaf and Leaf with loops presets:
@@ -104,7 +105,7 @@ With the clearance at 0, every preset and every run above grew exactly what 1.0.
 | Imported | Every closed path of an SVG, read even-odd, so a shape inside a shape is a hole. Outlined strokes are read as the lines they were (see [With Illustrator](#with-illustrator)). Open paths are left out, and the status says so. The outline scales with the sheet. |
 | Grow outside the shape | The sheet with the shape as a hole, so veins wrap round it. |
 | Edge clearance | How far veins stay inside the shape's edges and holes, in real units. 0, the default, lets veins reach the outline, as in a real leaf. More keeps vein centre lines that far from a drawn outline or a cut line: every vein, loop join, attractor and root keeps it. For a clear gap, use more than half the widest vein near the edge. Changing it places the attractors again. |
-| Roots | Shape's own (a leaf's base, an ellipse's centre), Base, Centre, Row (along the bottom, for parallel veins), Edge (round the outline, growing in), or click with the Roots tool. Drag a root to move it, Alt-click it to remove it. |
+| Roots | Shape's own (a leaf's base, an ellipse's centre, or one at the base of each part of an imported or outside shape), Base, Centre, Row (along the bottom, for parallel veins), Edge (round every part's outline, growing in), or click with the Roots tool. Drag a root to move it; Alt-click it, or press and hold it on a touch screen, to remove it. |
 
 ### Attractors
 
@@ -116,13 +117,13 @@ With the clearance at 0, every preset and every run above grew exactly what 1.0.
 | Edge | Crowded near the outline, so twigs fill a tree's crown edge (Runions 2007, Fig. 7). |
 | Picture | More attractors where a chosen picture is darker. The picture fits inside the sheet, centred. The project saves the attractors, not the picture. |
 
-Every placement gives exactly the count asked for. The one exception is a picture too pale to hold that many; then the status says how many fit. The same pattern number always gives the same points.
+Every placement gives exactly the count asked for, unless a picture is too pale or an edge clearance leaves too little room to hold that many; then the status says how many fit. The same pattern number always gives the same points.
 
 ### Exports
 
 | Export | Contents | Units |
 | --- | --- | --- |
-| SVG | Layers `shape`, `veins`, `attractors`, `roots`, each only when shown. One path per vein between forks, with its stroke width, smoothed through its points (Catmull–Rom) unless Smooth curves is off. No background. Very long veins are split at Illustrator's 32,000-point path limit. | mm, in, pt or px, as the sheet |
+| SVG | Groups `shape`, `veins`, `attractors`, `roots`, each only when shown. One path per vein between forks, with its stroke width, smoothed through its points (Catmull–Rom) unless Smooth curves is off. Where a curve would swing out of the shape or inside the edge clearance, as at a sharp loop join, that piece is drawn straight. No background. Very long veins are split at Illustrator's 32,000-point path limit. | mm, in, pt or px, as the sheet; in px the SVG is that many pixels, which other apps show at 96 per inch |
 | DXF | AutoCAD R12 text. Layers `VEINS` (centre-line polylines), `SHAPE`, `ATTRACTORS` and `ROOTS` (circles), each only when shown. y points up, as DXF expects. | mm, or in for inch sheets |
 | PNG | The sheet at its pixels per inch, in its colours, optionally transparent. The file records its pixels per inch, so Illustrator, InDesign and Photoshop place it at real size. | px |
 | Project | Settings, the imported shape, roots, attractors and every vein point at full precision, as `.vessel.json` (schema `vessel-studio`, version 1). Growth carries on exactly where it stopped. | mm |
@@ -138,7 +139,7 @@ Every placement gives exactly the count asked for. The one exception is a pictur
 | Limit attraction distance | Off by default, as for Runions' leaves: every attractor pulls its nearest vein however far away. On, only veins within the distance feel it, and tips wander. |
 | Loops | Closed venation. An attractor pulls every vein point in its relative neighbourhood and waits until all of them arrive, then they join there with a real join, closing a loop. Veins less than 8 segments apart along the tree don't join, so no tiny bulbs. |
 | Leaf growth | The outline grows about the first root from 6 % to full size over the steps set. Attractors join in as it reaches them, so main veins form first (marginal growth, Runions 2005). |
-| Keep veins apart | Refuses a new point within 0.45 segments of another vein. A refused step uses up the attractors it would have reached. Off grows as the older pages did. |
+| Keep veins apart | Refuses a new point within 0.45 segments of another vein. A refused open vein's step uses up the attractors it would have reached; with Loops, they wait for the other veins. Off grows as the older pages did. |
 | Keep heading | Blends a growing vein's step with its last heading, 0–95 %. Side branches always start toward their own attractors. |
 | Wiggle | A seeded wobble on each step, 0–1.5. |
 | Pull | A steady pull, 0–1, up, down, left, right or out from the root (Runions 2007, Eq. 3). |
@@ -156,7 +157,7 @@ Every placement gives exactly the count asked for. The one exception is a pictur
 | S | Grow one step |
 | R | Reset to the roots |
 | O, H | Roots and Pan tools |
-| Alt-click | Remove a root |
+| Alt-click, or press and hold on a touch screen | Remove a root |
 | Scroll, pinch | Zoom |
 | +, −, F | Zoom in, out, fit |
 | 1, 2, 3, 4 | Veins, attractors, shape, roots |
@@ -183,7 +184,7 @@ These rules make it fast and repeatable:
 **An honest note on its limits:**
 - It is a picture-making model, not a physiological one: Murray widths come from the number of vein ends each vein feeds, not from a flow solve. On a loop, a join takes the thinner end's width.
 - A vein can't grow round an obstacle to reach an attractor it can't see. It grows toward attractors it can see, and gets there in the end.
-- A handful of attractors can end up just beyond the kill distance of two veins, where no step is allowed. The status counts them: at most 14 of 4,500 (0.3 %), in the presets and in Gil's test shapes.
+- A handful of attractors can end up just beyond the kill distance of two veins, where no step is allowed. The status counts them: at most 14 of 4,500 (0.3 %) in the presets and Gil's test shapes, and up to 78 of 4,500 (1.7 %) on his pill outlines with loops.
 
 ## Known limits
 
@@ -200,7 +201,8 @@ Engine timings were measured in Node on this Mac (Apple silicon), best of 3 runs
 - **In the app** at the default Speed (3 steps a frame), growth is held to the screen: about 186 steps a second, so the A4 leaf takes 1.5 s. At Speed 40 the A3 leaf of 20,000 attractors took 2.06 s and 2.12 s in two runs, as fast as the engine alone.
 - **In a background tab** growth carries on at about half the speed: 182 steps in 6 s at Speed 1, about 30 a second, against 60 in front.
 - **Size caps:** 20,000 attractors and 400,000 vein points. A session larger than about 4.5 MB isn't kept in the browser between visits, and the File tab says so; save a project instead.
-- **Loops are slower:** each source tests up to 48 nearby vein points for its neighbourhood.
+- **Loops are slower:** each source tests up to 48 nearby vein points for its neighbourhood. A long kill distance with short segments costs most: kill 20 mm with 1 mm segments takes about 7 ms a step, and the extreme of kill 37 mm with 0.05 mm segments about 0.1 s.
+- **Placing attractors** happens on the page, not in the worker. Even places 20,000 in about 0.4 s; Edge, which measures each point's distance to the outline, 1–1.5 s on Gil's test shapes.
 - **Very thin frames read as lines.** Two nested outlines less than 3 % of their size apart all the way round are read as one outlined stroke. A frame that thin can't hold veins anyway, and the status says when it happens.
 - **Veins reach the outline unless Edge clearance is set.** Without it, vein centre lines come as close as 0.002 mm to the outline, so a vein's stroke width can overlap a drawn line. The clearance is for centre lines: to keep a vein's whole stroke clear, set it to at least half the widest vein that runs near the edge.
 

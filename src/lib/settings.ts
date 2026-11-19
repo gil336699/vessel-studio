@@ -104,11 +104,11 @@ export const PRESETS: { id: PresetName; label: string; tip: string; values: Pres
   { id: 'tree', label: 'Tree', tip: 'A trunk that climbs to its crown and branches there, pulled upward, with more twigs near the crown’s edge.', roots: 'shape',
     values: { shape: 'tree', loops: false, leafGrowth: false, count: 2500, placement: 'edge', inertia: 0.3, wiggle: 0.15, pull: 0.35, pullMode: 'up', attraction: 0, widthRule: 'murray', exponent: 2.2, veinColor: '#3b2f25' } },
   // Gil's BioVessel Pro presets: inertia, wiggle and thickness kept, density turned into a count.
-  { id: 'arterial', label: 'Arterial', tip: 'Smooth, steady vessels that keep their heading, like arteries (BioVessel’s Arterial).', roots: 'centre',
+  { id: 'arterial', label: 'Arterial', tip: 'Smooth, steady vessels that keep their heading, like arteries.', roots: 'centre',
     values: { shape: 'ellipse', loops: false, leafGrowth: false, count: 3500, placement: 'even', inertia: 0.8, wiggle: 0.1, pull: 0, attraction: 0, widthRule: 'murray', exponent: 3, veinColor: '#b3261e' } },
-  { id: 'neural', label: 'Neural', tip: 'Fine, wandering branches that change direction often (BioVessel’s Neural).', roots: 'centre',
+  { id: 'neural', label: 'Neural', tip: 'Fine, wandering branches that change direction often, like nerves.', roots: 'centre',
     values: { shape: 'ellipse', loops: false, leafGrowth: false, count: 6000, placement: 'random', inertia: 0.2, wiggle: 0.8, pull: 0, attraction: 0, widthRule: 'murray', exponent: 3, veinColor: '#5b3fa8' } },
-  { id: 'capillary', label: 'Capillary', tip: 'A dense, even bed of small vessels that join into loops (BioVessel’s Capillary).', roots: 'centre',
+  { id: 'capillary', label: 'Capillary', tip: 'A dense, even bed of small vessels that join into loops.', roots: 'centre',
     values: { shape: 'ellipse', loops: true, leafGrowth: false, count: 5000, placement: 'even', inertia: 0.4, wiggle: 0.3, pull: 0, attraction: 0, widthRule: 'murray', exponent: 3, veinColor: '#c2185b' } },
 ]
 

@@ -1,6 +1,7 @@
 // A design: the settings, the shape (a preset or an imported outline), the roots and the attractors, plus the
 // growth so far. Everything here is plain data, so it can go into a project file, the worker and undo.
 import { placeAttractors, type DensityMap } from '../veins/attractors'
+import { boxOf, pointInRing } from '../veins/geometry'
 import type { EngineState } from '../veins/engine'
 import type { Ring, Vec } from '../veins/geometry'
 import { Rng } from '../veins/random'
@@ -42,12 +43,14 @@ export function engineState(g: Growth): EngineState {
 }
 
 // The shape's outlines in sheet millimetres. An imported outline scales with the sheet, keeping its place on the
-// page, as the sheet's width and height follow each other for imported shapes.
+// page. It's never stretched: when the sheet's proportions differ from the page's, as when a typed width meets
+// the smallest sheet, it's scaled to fit and centred.
 export function shapeRings(s: Settings, imported: Imported | null): Ring[] {
   let rings: Ring[]
   if (s.shape === 'imported') {
-    const kx = imported ? s.width / imported.width : 1, ky = imported ? s.height / imported.height : 1
-    rings = (imported?.rings ?? []).map(ring => (kx === 1 && ky === 1 ? ring : ring.map(([x, y]): Vec => [x * kx, y * ky])))
+    const k = imported ? Math.min(s.width / imported.width, s.height / imported.height) : 1
+    const dx = imported ? (s.width - imported.width * k) / 2 : 0, dy = imported ? (s.height - imported.height * k) / 2 : 0
+    rings = (imported?.rings ?? []).map(ring => (k === 1 && dx === 0 && dy === 0 ? ring : ring.map(([x, y]): Vec => [x * k + dx, y * k + dy])))
   } else rings = presetRings(s.shape, s.width, s.height, s.margin)
   return s.invert ? invertRings(rings, s.width, s.height) : rings
 }
@@ -94,15 +97,102 @@ export function startRoots(s: Settings, region: Region, placement: RootPlacement
       return spaced(wanted, 2 * s.segment)
     }
     case 'edge': {
-      const ring = region.rings[0] ?? []
-      const per = ring.reduce((sum, p, i) => sum + Math.hypot(ring[(i + 1) % ring.length][0] - p[0], ring[(i + 1) % ring.length][1] - p[1]), 0)
+      // Round the outline of every part, shared out by length: each letter of a word gets its share.
+      const outlines = region.parts()
+      const lengths = outlines.map(ring => ring.reduce((sum, p, i) => sum + Math.hypot(ring[(i + 1) % ring.length][0] - p[0], ring[(i + 1) % ring.length][1] - p[1]), 0))
+      const per = lengths.reduce((a, b) => a + b, 0)
       const n = Math.max(6, Math.min(48, Math.round(per / Math.max(6 * s.segment, per / 48))))
-      wanted = pointsAlong(ring, n)
+      wanted = outlines.flatMap((ring, i) => pointsAlong(ring, Math.max(1, Math.round((n * lengths[i]) / per))))
       break
     }
-    default: wanted = s.shape === 'imported' ? [[cx, y1]] : defaultRoots(s.shape, s.width, s.height, s.margin, s.invert)
+    default:
+      // An imported drawing or the space round a shape can come in separate parts, such as the letters of a word or
+      // the hole of a ring grown outside: each part gets a root at its own base, as no vein can cross to it.
+      if (s.shape === 'imported' || s.invert) {
+        const roots = spaced(partRoots(region, inset, s.invert ? defaultRoots(s.shape, s.width, s.height, s.margin, true)[0] : null), 2 * s.segment)
+        return [...roots, ...areaRoots(region, inset, roots)]
+      }
+      wanted = defaultRoots(s.shape, s.width, s.height, s.margin, s.invert)
   }
   return spaced(wanted.map(([x, y]) => region.nearestInside(x, y, inset)).filter((p): p is Vec => p !== null), 2 * s.segment)
+}
+
+// Areas no vein can cross between can lie within one outline: the corners left when a shape nearly fills its page
+// and is grown outside it. They're found on a grid of points clear of the edges, linked where nothing is in the
+// way, and each area big enough to grow in that has no root gets one, at its lowest point nearest its middle.
+function areaRoots(region: Region, inset: number, roots: Vec[]): Vec[] {
+  const [x0, y0, x1, y1] = region.box
+  const c = Math.max(x1 - x0, y1 - y0) / 160
+  if (!(c > 0)) return []
+  const nx = Math.max(1, Math.ceil((x1 - x0) / c)), ny = Math.max(1, Math.ceil((y1 - y0) / c))
+  const at = (i: number, j: number): Vec => [x0 + (i + 0.5) * c, y0 + (j + 0.5) * c]
+  const open = new Uint8Array(nx * ny)
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const [x, y] = at(i, j)
+    if (region.contains(x, y) && !region.nearEdge(x, y, inset)) open[j * nx + i] = 1
+  }
+  const label = new Int32Array(nx * ny).fill(-1)
+  const areas: number[][] = []
+  for (let start = 0; start < nx * ny; start++) {
+    if (!open[start] || label[start] >= 0) continue
+    const cells = [start]
+    label[start] = areas.length
+    for (let q = 0; q < cells.length; q++) {
+      const cell = cells[q], i = cell % nx, j = (cell - i) / nx, [x, y] = at(i, j)
+      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const i2 = i + di, j2 = j + dj, next = j2 * nx + i2
+        if (i2 < 0 || j2 < 0 || i2 >= nx || j2 >= ny || !open[next] || label[next] >= 0) continue
+        const [x2, y2] = at(i2, j2)
+        if (region.crosses(x, y, x2, y2)) continue
+        label[next] = areas.length
+        cells.push(next)
+      }
+    }
+    areas.push(cells)
+  }
+  // Which areas a root is already in: its own cell, or one next to it, as a root can sit nearer an edge than a cell's middle.
+  const held = new Set<number>()
+  for (const [x, y] of roots) {
+    const i = Math.floor((x - x0) / c), j = Math.floor((y - y0) / c)
+    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+      const i2 = i + di, j2 = j + dj
+      if (i2 < 0 || j2 < 0 || i2 >= nx || j2 >= ny) continue
+      const k = label[j2 * nx + i2]
+      if (k >= 0 && !region.crosses(x, y, ...at(i2, j2))) held.add(k)
+    }
+  }
+  const out: Vec[] = []
+  const order = areas.map((cells, k) => k).sort((a, b) => areas[b].length - areas[a].length)
+  for (const k of order) {
+    if (held.has(k) || areas[k].length < 4 || roots.length + out.length >= 48) continue
+    const cells = areas[k]
+    const rows = cells.map(cell => Math.floor(cell / nx))
+    const bottom = Math.max(...rows)
+    const xs = cells.map(cell => cell % nx), mid = (Math.min(...xs) + Math.max(...xs)) / 2
+    const pick = cells.filter((cell, n) => rows[n] === bottom).sort((a, b) => Math.abs((a % nx) - mid) - Math.abs((b % nx) - mid))[0]
+    out.push(at(pick % nx, bottom))
+  }
+  return out
+}
+
+// A root for each part of the shape, at the bottom middle of the part's outline, moved inside that part; the first
+// part's is at `start` instead when given. Up to 48 parts, largest first.
+function partRoots(region: Region, inset: number, start: Vec | null): Vec[] {
+  const out: Vec[] = []
+  for (const [k, ring] of region.parts().slice(0, 48).entries()) {
+    const [x0, y0, x1, y1] = boxOf([ring])
+    const inPart = (p: Vec | null): p is Vec => p !== null && pointInRing(ring, p[0], p[1])
+    const near = region.nearestInside(k === 0 && start ? start[0] : (x0 + x1) / 2, k === 0 && start ? start[1] : y1, inset)
+    if (inPart(near)) { out.push(near); continue }
+    // Nothing near the base inside this part: look up through the part, nearest the middle first.
+    const cx = (x0 + x1) / 2
+    const xs = Array.from({ length: 33 }, (_, i) => x0 + (i / 32) * (x1 - x0)).sort((a, b) => Math.abs(a - cx) - Math.abs(b - cx))
+    search: for (let r = 0; r < 33; r++) {
+      const y = y1 - (r / 32) * (y1 - y0)
+      for (const x of xs) if (pointInRing(ring, x, y) && region.contains(x, y) && !region.nearEdge(x, y, inset)) { out.push([x, y]); break search }
+    }
+  }
+  return out
 }
 
 // The lowest point inside the shape straight above (x, bottom), or null.
@@ -153,12 +243,19 @@ export function freshDesign(s: Settings, imported: Imported | null, picture: Den
 // loaded (it isn't saved in projects), so the attractors were placed evenly instead.
 export type Planned = { next: Design; restarts: boolean; short: boolean; noPicture: boolean }
 
+// Whether a change would place the attractors again and start the veins over: planChange's `restarts`, without
+// placing anything, so the page can ask first and place once.
+export function changeRestarts(cur: Design, patch: Partial<Settings>, imported: Imported | null, opts: { roots?: Vec[]; replace?: boolean } = {}): boolean {
+  const settings = sanitizeSettings({ ...cur.settings, ...patch })
+  return Boolean(opts.replace) || imported !== cur.imported || placementKey(settings, imported) !== cur.placedFor || Boolean(opts.roots)
+}
+
 export function planChange(cur: Design, patch: Partial<Settings>, imported: Imported | null, picture: PictureData | null, opts: { roots?: Vec[]; replace?: boolean } = {}): Planned {
   const settings = sanitizeSettings({ ...cur.settings, ...patch })
   const key = placementKey(settings, imported)
   const newOutline = imported !== cur.imported
   const replace = Boolean(opts.replace) || newOutline || key !== cur.placedFor
-  if (!replace && !opts.roots) return { next: { ...cur, settings, imported }, restarts: false, short: false, noPicture: false }
+  if (!changeRestarts(cur, patch, imported, opts)) return { next: { ...cur, settings, imported }, restarts: false, short: false, noPicture: false }
   const region = regionOf(settings, imported)
   const reshaped = (['width', 'height', 'margin', 'shape', 'invert'] as const).some(k => settings[k] !== cur.settings[k]) || newOutline
   const newShape = settings.shape !== cur.settings.shape || settings.invert !== cur.settings.invert || newOutline
@@ -171,8 +268,6 @@ export function planChange(cur: Design, patch: Partial<Settings>, imported: Impo
   }
 }
 
-// Settings that decide the shape or where attractors go; changing one starts the growth again.
-export const PLACEMENT_KEYS: (keyof Settings)[] = ['width', 'height', 'margin', 'shape', 'invert', 'clearance', 'count', 'placement', 'seed']
 // Settings the worker uses while it grows; they apply live.
 export const GROWTH_KEYS: (keyof Settings)[] = ['segment', 'kill', 'attraction', 'loops', 'inertia', 'wiggle', 'pull', 'pullMode', 'apart', 'leafGrowth', 'leafSteps']
 

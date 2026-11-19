@@ -3,12 +3,13 @@
 // each frame adds to, for drawing, and copies it into the design when growth stops.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Vec } from './veins/geometry'
-import { engineState, GROWTH_KEYS, hasGrown, planChange, shapeRings, startGrowth, type Design, type Growth, type Imported } from './lib/design'
+import { changeRestarts, type Design, engineState, type Growth, GROWTH_KEYS, hasGrown, type Imported, planChange, shapeRings, startGrowth } from './lib/design'
 import { emptyHistory, record, redo as redoStep, undo as undoStep, type History } from './lib/history'
 import { growthParams, type Settings } from './lib/settings'
 import type { PictureData } from './lib/picture'
 import { GrowthClient } from './worker/client'
 import type { Frame, FromRunner } from './worker/runner'
+import { formatLength } from './lib/units'
 
 export type Status = { text: string; warning?: boolean } | null
 export type Stats = { revision: number; step: number; points: number; live: number; waiting: number; done: Growth['done']; rate: number }
@@ -120,15 +121,33 @@ export function useVeins(initial: () => { design: Design; saved: boolean }, setS
   }, [])
 
   useEffect(() => {
+    // Workers started in a row without a frame from any: a worker file that won't load stops the retries.
+    let failures = 0
+    const start = () => {
+      const c = new GrowthClient(onMessage)
+      client.current = c
+      const d = committed.current
+      c.load({ gen: ++gen.current, rings: shapeRings(d.settings, d.imported), attractors: d.attractors, params: growthParams(d.settings), roots: d.roots, state: engineState(d.growth) })
+    }
     const onMessage = (message: FromRunner) => {
       const c = client.current
       if (message.kind === 'error') {
         runningRef.current = false
         setRunning(false); setStopping(false)
-        statusRef.current({ text: `Growth stopped: ${message.message}`, warning: true })
         waiters.current.splice(0).forEach(resolve => resolve())
+        // A stopped worker takes no more messages: a fresh one carries on from the veins the page has.
+        c?.dispose()
+        failures++
+        if (failures <= 2) {
+          start()
+          statusRef.current({ text: `Growth stopped: ${message.message} Press Grow to carry on.`, warning: true })
+        } else {
+          client.current = null
+          statusRef.current({ text: `Growth can’t start: ${message.message} Reload the page to try again; your design is kept.`, warning: true })
+        }
         return
       }
+      failures = 0
       const { frame } = message
       if (frame.gen !== gen.current) { c?.ack(); return }
       const fits = mirror.apply(frame)
@@ -156,11 +175,8 @@ export function useVeins(initial: () => { design: Design; saved: boolean }, setS
       if (frame.step !== before) setUnsaved(true)
       waiters.current.splice(0).forEach(resolve => resolve())
     }
-    const c = new GrowthClient(onMessage)
-    client.current = c
-    const d = committed.current
-    c.load({ gen: ++gen.current, rings: shapeRings(d.settings, d.imported), attractors: d.attractors, params: growthParams(d.settings), roots: d.roots, state: engineState(d.growth) })
-    return () => { c.dispose(); client.current = null }
+    start()
+    return () => { client.current?.dispose(); client.current = null }
   }, [show, mirror])
 
   // Stops growing and waits for the worker's last veins, so nothing after it works from a stale copy.
@@ -191,7 +207,12 @@ export function useVeins(initial: () => { design: Design; saved: boolean }, setS
         commit(next)
         load(next)
         const placed = next.attractors.length / 2
-        if (noPicture) statusRef.current({ text: 'No picture is loaded (projects don’t keep it), so the attractors were placed evenly. Choose the picture again to place them from it.', warning: true })
+        // A smaller sheet caps the margin and the edge clearance; say when that cut what was set.
+        const wanted = { ...cur.settings, ...patch }
+        const cut = ([['margin', 'Margin'], ['clearance', 'Edge clearance']] as const).filter(([k]) => next.settings[k] < wanted[k] - 1e-9)
+          .map(([k, name]) => `${name} is now ${formatLength(next.settings[k], next.settings.units, next.settings.dpi)}`)
+        if (cut.length) statusRef.current({ text: `${cut.join(' and ')}, the most this sheet allows.` })
+        else if (noPicture) statusRef.current({ text: 'No picture is loaded (projects don’t keep it), so the attractors were placed evenly. Choose the picture again to place them from it.', warning: true })
         else if (short) statusRef.current({ text: `Only ${placed.toLocaleString()} of ${next.settings.count.toLocaleString()} attractors fit${next.settings.placement === 'picture' ? ': the picture is too pale for more. Use a darker picture or fewer attractors.' : next.settings.clearance > 0 ? ' in this shape, clear of its edges. Use fewer, a smaller edge clearance, or a larger shape.' : ' in this shape. Use fewer, or a larger shape.'}`, warning: true })
         else if (hasGrown(cur) && !opts.quiet) statusRef.current({ text: 'The veins started again for the new shape or attractors. Undo brings them back.' })
         return
@@ -206,7 +227,8 @@ export function useVeins(initial: () => { design: Design; saved: boolean }, setS
       if (next.settings.speed !== cur.settings.speed) client.current?.speed(next.settings.speed)
     }
     const cur = current()
-    const restarts = planChange(cur, patch, opts.imported === undefined ? cur.imported : opts.imported, pictureRef.current, { roots: opts.roots }).restarts
+    // Asked without placing attractors: placing is the slow part, and apply() does it once.
+    const restarts = changeRestarts(cur, patch, opts.imported === undefined ? cur.imported : opts.imported, { roots: opts.roots })
     if (restarts && runningRef.current) void halt().then(apply)
     else apply()
   }, [current, remember, commit, load, halt, show, mirror])
@@ -313,4 +335,3 @@ export function useVeins(initial: () => { design: Design; saved: boolean }, setS
   }
 }
 
-export type VeinsModel = ReturnType<typeof useVeins>

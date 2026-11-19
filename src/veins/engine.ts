@@ -99,10 +99,23 @@ class PointGrid {
     const list = this.map.get(k)
     if (list) list.push(id); else this.map.set(k, [id])
   }
-  // Every point within r of (x, y), unordered.
+  // Every point within r of (x, y), unordered. When the search covers more cells than hold points, as for a wide
+  // loop search with a long kill distance and short segments, the cells that hold points are looked at instead.
   near(x: number, y: number, r: number, xs: ArrayLike<number>, ys: ArrayLike<number>, visit: (id: number, d2: number) => boolean | void) {
     const r2 = r * r, c = this.cell
-    for (let j = Math.floor((y - r) / c); j <= Math.floor((y + r) / c); j++) for (let i = Math.floor((x - r) / c); i <= Math.floor((x + r) / c); i++) {
+    const i0 = Math.floor((x - r) / c), i1 = Math.floor((x + r) / c), j0 = Math.floor((y - r) / c), j1 = Math.floor((y + r) / c)
+    if ((i1 - i0 + 1) * (j1 - j0 + 1) > this.map.size) {
+      for (const [key, list] of this.map) {
+        const i = Math.floor(key / 65536) - 32768, j = (key % 65536) - 32768
+        if (i < i0 || i > i1 || j < j0 || j > j1) continue
+        for (const id of list) {
+          const dx = xs[id] - x, dy = ys[id] - y, d2 = dx * dx + dy * dy
+          if (d2 < r2 && visit(id, d2) === true) return
+        }
+      }
+      return
+    }
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
       const list = this.map.get(this.key(i, j))
       if (!list) continue
       for (const id of list) {
@@ -347,8 +360,9 @@ export class Engine {
       const d = Math.sqrt(this.best[s])
       if (P.topology === 'open') {
         const v = this.owner[s]
-        // Used up by a vein that reaches it; one just across an edge or a thin wall can't (it can't see it).
-        if (d < P.kill) { if (this.sees(v, s)) { this.used[s] = USED; usedNow.push(s) } continue }
+        // Used up by a vein that reaches it; one just across an edge or a thin wall can't (it can't see it), but
+        // it is in reach, so growth that stops with only these left has stalled, not run out of reach.
+        if (d < P.kill) { if (this.sees(v, s)) { this.used[s] = USED; usedNow.push(s) } else inReach++; continue }
         if (!(d < limit)) continue
         inReach++
         if (!this.sees(v, s)) continue

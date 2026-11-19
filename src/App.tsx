@@ -10,7 +10,6 @@ import { TabPanel, Tabs } from './components/Tabs'
 import { TooltipLayer } from './components/Tooltip'
 import type { Vec } from './veins/geometry'
 import { randomSeed } from './veins/random'
-import { mergeStrokeBands } from './veins/strokes'
 import { freshDesign, regionOf, shapeRings, startRoots, type Design, type Imported, type RootPlacement } from './lib/design'
 import { designDxf } from './lib/dxfExport'
 import { pngProblem, renderPng } from './lib/pngExport'
@@ -18,11 +17,12 @@ import { readPicture, PictureError, type PictureData } from './lib/picture'
 import { EXTENSION, parseProject, ProjectError, projectJson } from './lib/project'
 import { saveFile } from './lib/saveFile'
 import { keepSession, type Kept } from './lib/session'
-import { sceneContents, sceneOf } from './lib/scene'
-import { applyPreset, DEFAULTS, LIMITS, PRESETS, type PresetName, type Settings } from './lib/settings'
+import { forExport, sceneContents, sceneOf } from './lib/scene'
+import { applyPreset, DEFAULTS, PRESETS, type PresetName, type Settings } from './lib/settings'
 import { designSvg } from './lib/svgExport'
+import { shapeFromDrawing } from './lib/importShape'
 import { readSvgDrawing, SvgShapeError } from './lib/svgImport'
-import { formatLength, pixelSize, toUnits, trimZeros, UNIT_LABEL } from './lib/units'
+import { pixelSize, toUnits, trimZeros, UNIT_LABEL } from './lib/units'
 import { useVeins, type Status } from './useVeins'
 import { version } from '../package.json'
 
@@ -57,28 +57,22 @@ const baseName = (s: Settings, imported: Imported | null) => {
   return `vessel-studio-${s.shape}-${v(s.width)}x${v(s.height)}${UNIT_LABEL[unit]}`
 }
 
-// Brings an imported drawing within the sheet's size limits, scaling it evenly if needed.
-function fitPage(width: number, height: number): number {
-  const big = Math.max(width, height), small = Math.min(width, height)
-  if (big > LIMITS.width[1]) return LIMITS.width[1] / big
-  if (small < LIMITS.width[0]) return LIMITS.width[0] / small
-  return 1
-}
-
 // A share of a whole, which a handful in thousands doesn't round to 0.0 %.
 const share = (part: number, whole: number): string => {
   const pct = (part / Math.max(1, whole)) * 100
   return pct > 0 && pct < 0.05 ? 'under 0.1 %' : `${pct.toFixed(1)} %`
 }
 
-const DONE_TEXT = (done: string, live: number, total: number): string => {
+const SHAPE_NAME: Record<Settings['shape'], string> = { leaf: 'Leaf', ellipse: 'Ellipse', rect: 'Rectangle', ring: 'Ring', tree: 'Tree', imported: 'Imported' }
+
+const DONE_TEXT = (done: string, live: number, total: number, outside = false): string => {
   const left = `${live.toLocaleString()} ${live === 1 ? 'attractor was' : 'attractors were'}`
   switch (done) {
     case 'reached': return 'Grown: every attractor reached.'
     case 'stalled': return live ? `Grown. ${left} left where no vein could grow (${share(live, total)}).` : 'Grown.'
-    case 'out-of-reach': return `Stopped: ${live === 1 ? 'the attractor left is' : `the ${live.toLocaleString()} attractors left are`} beyond the attraction distance of every vein. Raise it, or turn its limit off.`
+    case 'out-of-reach': return `Stopped: ${live === 1 ? 'the attractor left is' : `the ${live.toLocaleString()} attractors left are`} beyond the attraction distance of every vein. Raise the attraction distance, or turn its limit off.`
     case 'cap': return 'Stopped at 400,000 vein points, the most this page grows. Use fewer attractors or a longer segment.'
-    case 'empty': return 'There are no roots. Pick the Roots tool and click inside the shape to add one.'
+    case 'empty': return outside ? 'There are no roots. Pick the Roots tool and click in the space round the shape to add one.' : 'There are no roots. Pick the Roots tool and click inside the shape to add one.'
     default: return ''
   }
 }
@@ -98,6 +92,8 @@ export function App() {
   const [pending, setPending] = useState<Pending | null>(null)
   const [openError, setOpenError] = useState('')
   const [sessionKept, setSessionKept] = useState<Kept>('kept')
+  // What the last import said, kept on the Shape tab while that outline is in use.
+  const [importNotes, setImportNotes] = useState<{ rings: Vec[][]; text: string[] } | null>(null)
   const frameRef = useRef<HTMLDivElement>(null)
   const stageRef = useRef<StageControls | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -121,7 +117,10 @@ export function App() {
   // Keep a copy of the session a moment after the last change, while nothing is growing.
   const { current, running, unsaved: unsavedNow } = model
   const keep = useCallback((unsavedFlag: boolean) => {
-    setSessionKept(keepSession(storage, SESSION_KEY, SESSION_UNSAVED_KEY, projectJson(current(), APP_VERSION), unsavedFlag, SESSION_LIMIT))
+    // A project file takes about 46 characters a vein point; at 30 a point, the estimate errs low, so a design that
+    // would fit is never turned away.
+    const d = current()
+    setSessionKept(keepSession(storage, SESSION_KEY, SESSION_UNSAVED_KEY, () => projectJson(d, APP_VERSION), unsavedFlag, SESSION_LIMIT, d.growth.x.length * 30))
   }, [current])
   useEffect(() => {
     if (running) return
@@ -138,6 +137,16 @@ export function App() {
     const timer = running ? window.setInterval(now, 5000) : undefined
     return () => { window.removeEventListener('pagehide', now); document.removeEventListener('visibilitychange', hidden); window.clearInterval(timer) }
   }, [running, unsavedNow, keep])
+
+  // A tap or click on a control that can't be used yet says why in the status line: touch screens show no tooltips.
+  useEffect(() => {
+    const onClick = (event: MouseEvent) => {
+      const off = event.target instanceof Element ? event.target.closest<HTMLElement>('[aria-disabled="true"][data-tip]') : null
+      if (off?.dataset.tip) setStatus({ text: off.dataset.tip })
+    }
+    document.addEventListener('click', onClick, true)
+    return () => document.removeEventListener('click', onClick, true)
+  }, [])
 
   // Asks before discarding unsaved work, in an in-app dialog (embedded browsers can block confirm()).
   const guard = useCallback((when: boolean, p: Pending) => { if (when) setPending(p); else p.run() }, [])
@@ -179,29 +188,16 @@ export function App() {
   const readSvg = async (file: File) => {
     try {
       const drawing = readSvgDrawing(await file.text())
-      const k = fitPage(drawing.width, drawing.height)
-      const closed = drawing.paths.filter(p => p.closed && p.points.length >= 3)
-      if (!closed.length) { setStatus({ text: `${file.name} has no closed shapes to grow inside. Draw a closed path, such as an outline, and export it again.`, warning: true }); return }
-      // Lines saved as outlined strokes come in as thin bands; each is read as the line it was drawn as.
-      const strokes = mergeStrokeBands(closed.map(p => p.points.map(([x, y]): Vec => [x * k, y * k])))
-      const imported: Imported = { name: file.name, sized: drawing.units, width: drawing.width * k, height: drawing.height * k, rings: strokes.rings }
       const cur = model.current().settings
-      change({ width: imported.width, height: imported.height, shape: 'imported', invert: false, units: drawing.units === 'illustrator' ? 'pt' : cur.units }, null, { imported })
+      const shape = shapeFromDrawing(drawing, file.name, cur.units, cur.dpi)
+      if ('error' in shape) { setStatus({ text: shape.error, warning: true }); return }
+      const { imported } = shape
+      change({ width: imported.width, height: imported.height, shape: 'imported', invert: false, units: shape.units }, null, { imported })
       setTab('shape')
-      const open = drawing.paths.length - closed.length
+      // The notes stay on the Shape tab after the status line moves on.
+      setImportNotes({ rings: imported.rings, text: [...shape.notes, ...shape.warnings] })
       const outlines = imported.rings.length
-      const units = drawing.units === 'illustrator' ? 'pt' : cur.units
-      const width = formatLength(strokes.width, units, cur.dpi, true)
-      // Reading outlined strokes as lines is what was meant, so it's said plainly, not as a warning.
-      const merged = strokes.pairs === 1 ? `Its line is an outlined stroke, a band ${width} wide, so the band was read as one line. Veins grow up to it, never into it; Edge clearance keeps them further off.`
-        : strokes.pairs > 1 ? `Its ${strokes.pairs} lines are outlined strokes, bands ${width} wide, so each band was read as one line. Veins grow up to them, never into them; Edge clearance keeps them further off.` : ''
-      const warnings = [
-        drawing.fromClip ? `${file.name} is a picture, so the outline of its clipping mask is the shape.` : '',
-        open ? `${open} open ${open === 1 ? 'path was' : 'paths were'} left out: only closed shapes count.` : '',
-        k !== 1 ? `The drawing was scaled to ${Math.round(k * 100)} % to fit the sheet limits.` : '',
-        drawing.units === 'css' ? 'The file doesn’t say its size, so it was read at 96 per inch; check the width and height.' : '',
-      ].filter(Boolean)
-      setStatus({ text: [`Using ${file.name}: ${outlines} ${outlines === 1 ? 'outline' : 'outlines'}.`, merged, ...warnings].filter(Boolean).join(' '), warning: warnings.length > 0 })
+      setStatus({ text: [`Using ${file.name}: ${outlines} ${outlines === 1 ? 'outline' : 'outlines'}.`, ...shape.notes, ...shape.warnings].join(' '), warning: shape.warnings.length > 0 })
     } catch (error) {
       setStatus({ text: error instanceof SvgShapeError ? error.message : `${file.name} could not be read as an SVG.`, warning: true })
     }
@@ -261,8 +257,10 @@ export function App() {
   const exportFile = async (kind: ExportKind) => {
     if (busy) return
     const d = model.current()
-    const sc = sceneOf(d.settings, shapeRings(d.settings, d.imported), { ...d.growth, points: d.growth.x.length }, d.attractors, d.growth.used, d.roots)
-    if (!sceneContents(sc).length) { setStatus({ text: 'Nothing is shown, so there’s nothing to export.', warning: true }); return }
+    const shown = sceneOf(d.settings, shapeRings(d.settings, d.imported), { ...d.growth, points: d.growth.x.length }, d.attractors, d.growth.used, d.roots)
+    if (!sceneContents(shown).length) { setStatus({ text: 'Nothing is shown, so there’s nothing to export.', warning: true }); return }
+    // Curves that stay inside the shape and clear of its edges, as the veins themselves do.
+    const sc = forExport(shown, d.settings, regionOf(d.settings, d.imported))
     const base = baseName(s, d.imported)
     if (kind === 'svg') report(`${base}.svg`, await saveFile(`${base}.svg`, designSvg(sc, d.settings), 'image/svg+xml', 'SVG drawing'))
     if (kind === 'dxf') report(`${base}.dxf`, await saveFile(`${base}.dxf`, designDxf(sc, d.settings), 'application/dxf', 'DXF drawing'))
@@ -283,12 +281,16 @@ export function App() {
     const p = PRESETS.find(item => item.id === name)!
     const roots = startRoots(next, regionOf(next, cur.imported), p.roots)
     change(next, 'preset', { roots, quiet: true })
-    setStatus({ text: `${p.label}: ${p.tip}${next.shape === 'imported' ? ' Your imported shape stays.' : ''}` })
+    // A preset brings its own built-in shape; say so when that replaces the one chosen.
+    const shapeNote = next.shape === 'imported' ? ' Your imported shape stays.'
+      : next.shape !== cur.settings.shape ? ` It uses the ${SHAPE_NAME[next.shape]} shape; choose another on the Shape tab.` : ''
+    setStatus({ text: `${p.label}: ${p.tip}${shapeNote}` })
   }
   const placeRoots = (placement: RootPlacement) => {
     const cur = model.current()
     const roots = startRoots(cur.settings, regionOf(cur.settings, cur.imported), placement)
     if (!roots.length) { setStatus({ text: 'No room for roots there in this shape.', warning: true }); return }
+    setStatus(null)
     void model.setRoots(roots)
   }
   const moveRoot = (index: number, x: number, y: number) => void model.setRoots(design.roots.map((r, i): Vec => (i === index ? [x, y] : r)), 'move-root')
@@ -299,10 +301,14 @@ export function App() {
 
   const noRoots = stats.points === 0 && 'There are no roots. Pick the Roots tool and click inside the shape to add one.'
   const noAttractors = design.attractors.length === 0 && 'There are no attractors to grow toward. Raise the count on the Grow tab, or choose another shape.'
-  const finished = stats.done && stats.done !== 'empty' && `${DONE_TEXT(stats.done, stats.live, design.attractors.length / 2)} Reset to grow again, change a growth setting, or add a root.`
+  const finished = stats.done && stats.done !== 'empty' && `${DONE_TEXT(stats.done, stats.live, design.attractors.length / 2, s.invert)} Reset to grow again, change a growth setting, or add a root.`
   const canGrow = noRoots || noAttractors || finished || false
   const resetBlocked = stats.step === 0 && stats.points === design.roots.length && !model.running && 'The veins are already at their roots.'
-  const reset = () => { void model.reset(); setStatus({ text: 'Back to the roots. Undo brings the veins back.' }) }
+  const reset = () => guard(stats.step > 0 && unsaved, {
+    title: 'Reset the veins?', confirm: 'Reset',
+    body: 'The veins go back to their roots and grow again from there. Undo brings them back.',
+    run: () => { void model.reset(); setStatus({ text: 'Back to the roots. Undo brings the veins back.' }) },
+  })
   // Growing clears old messages so the counts show; pausing says so briefly.
   const grow = () => { setStatus(null); model.play() }
   const pause = () => { model.pause(); setStatus({ text: 'Paused. Press Grow to carry on.' }) }
@@ -345,7 +351,7 @@ export function App() {
   })
 
   const counts = `${stats.points.toLocaleString()} vein ${stats.points === 1 ? 'point' : 'points'} · ${stats.live.toLocaleString()} ${stats.live === 1 ? 'attractor' : 'attractors'} left · step ${stats.step.toLocaleString()}`
-  const doneText = stats.done ? DONE_TEXT(stats.done, stats.live, design.attractors.length / 2) : ''
+  const doneText = stats.done ? DONE_TEXT(stats.done, stats.live, design.attractors.length / 2, s.invert) : ''
   const statusText = status?.text ?? (model.stopping ? 'Stopping after the current step…'
     : model.running ? `Growing · ${counts}` : doneText ? `${doneText} ${counts}` : counts)
 
@@ -364,7 +370,7 @@ export function App() {
     </div>
 
     <header className="brand glass">
-      <div><p className="app-kicker">Space colonization</p><h1>Vessel Studio</h1></div>
+      <div><p className="app-kicker" data-tip="How it works: points are scattered in the shape, and veins grow toward them, using up each one they reach.">Space colonization</p><h1>Vessel Studio</h1></div>
       <button type="button" className="icon-button" aria-label="Keyboard shortcuts and help" data-tip="Keyboard shortcuts and the quick start." data-key="?" onClick={() => setShowHelp(true)}>?</button>
     </header>
 
@@ -379,7 +385,8 @@ export function App() {
         <GrowPanel s={s} change={change} onPreset={preset} onShuffle={shuffle} picture={picture?.name ?? null} onPicture={() => pictureInput.current?.click()} />
       </TabPanel>
       <TabPanel idBase="design" id="shape" value={tab}>
-        <ShapePanel s={s} imported={design.imported} rootCount={design.roots.length} change={change} onImport={importSvg} onRoots={placeRoots} />
+        <ShapePanel s={s} imported={design.imported} rootCount={design.roots.length} change={change} onImport={importSvg} onRoots={placeRoots}
+          importNotes={importNotes && design.imported?.rings === importNotes.rings ? importNotes.text : null} />
       </TabPanel>
       <TabPanel idBase="design" id="style" value={tab}><StylePanel s={s} change={change} /></TabPanel>
       <TabPanel idBase="design" id="file" value={tab}>
@@ -411,7 +418,7 @@ export function App() {
       </div>
       <Dock running={model.running} stopping={model.stopping} canGrow={canGrow}
         onGrow={grow} onPause={pause} onStep={() => { setStatus(null); model.step() }} onReset={reset} canReset={resetBlocked}
-        status={statusText} warning={Boolean(status?.warning)}
+        status={statusText} warning={status ? Boolean(status.warning) : !model.running && (stats.done === 'out-of-reach' || stats.done === 'cap')}
         canUndo={model.canUndo} canRedo={model.canRedo} onUndo={() => void model.undo()} onRedo={() => void model.redo()} />
     </div>
 

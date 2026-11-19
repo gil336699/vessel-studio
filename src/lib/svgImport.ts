@@ -14,17 +14,23 @@ export type SvgDrawing = {
   // True when the file draws no shapes, only pictures, and its paths are the outlines of the clipping masks
   // that trim them. Illustrator saves a shape it can't write as SVG this way: a picture of it, clipped to its outline.
   fromClip: boolean
+  // Shapes trimmed by a clipping mask, which this reader reads whole: the outline may be larger than it looks.
+  clipped: number
+  // Live type: text the file draws from a font, which has no outlines to read.
+  texts: number
 }
 export class SvgShapeError extends Error {}
 
 // Illustrator saves a shape as a picture when SVG can't describe its look: a freeform gradient, a mesh or an effect.
 export const PICTURE_ONLY = 'This SVG is only a picture, with no lines. In Illustrator, select the shape, click Clear Appearance '
   + 'in the Appearance panel, add a stroke and export again.'
+export const LIVE_TYPE = 'This SVG’s text is live type, which has no outlines to grow in. In Illustrator, select the text, '
+  + 'choose Type › Create Outlines, and export again.'
 
 const MM: Record<string, number> = { mm: 1, cm: 10, q: 0.25, in: 25.4, pt: 25.4 / 72, pc: 25.4 / 6, px: 25.4 / 96, '': 25.4 / 96 }
 // Elements whose contents are never drawn directly, or aren't outlines.
 const SKIP = new Set(['defs', 'symbol', 'clippath', 'mask', 'pattern', 'marker', 'style', 'script', 'title', 'desc', 'metadata',
-  'text', 'foreignobject', 'lineargradient', 'radialgradient', 'filter', 'image', 'switch'])
+  'text', 'foreignobject', 'lineargradient', 'radialgradient', 'filter', 'image'])
 // Of those, the ones that are only ever drawn where something else refers to them.
 const UNDRAWN = new Set(['defs', 'symbol', 'clippath', 'mask', 'pattern', 'marker', 'style', 'script', 'title', 'desc', 'metadata',
   'lineargradient', 'radialgradient', 'filter'])
@@ -274,6 +280,16 @@ function lengthMm(text: string | undefined): number | null {
   return Number(m[1]) * MM[unit]
 }
 const unitOf = (text: string | undefined) => /([a-zA-Z%]*)\s*$/.exec(text ?? '')?.[1].toLowerCase() ?? ''
+// A length in user units, as a shape's x, width or radius: a plain number or px as it is, absolute units at 96 user
+// units per inch, as SVG has them. NaN for a percentage or anything else.
+const PER_USER: Record<string, number> = { '': 1, px: 1, mm: 96 / 25.4, cm: 96 / 2.54, q: 96 / 101.6, in: 96, pt: 96 / 72, pc: 16 }
+function userLength(text: string | undefined, missing = 0): number {
+  if (text === undefined) return missing
+  const m = /^\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*([a-zA-Z%]*)\s*$/.exec(text)
+  const unit = m?.[2].toLowerCase() ?? '%'
+  return m && unit in PER_USER ? Number(m[1]) * PER_USER[unit] : NaN
+}
+const at0 = (v: number) => (Number.isFinite(v) ? v : 0)
 
 function ellipsePoints(cx: number, cy: number, rx: number, ry: number, tol: number): Vec[] {
   const r = Math.max(rx, ry)
@@ -283,9 +299,9 @@ function ellipsePoints(cx: number, cy: number, rx: number, ry: number, tol: numb
 }
 
 function rectPoints(a: Attributes, tol: number): Vec[] | null {
-  const x = Number(a.x ?? 0) || 0, y = Number(a.y ?? 0) || 0, w = Number(a.width), h = Number(a.height)
+  const x = at0(userLength(a.x)), y = at0(userLength(a.y)), w = userLength(a.width, NaN), h = userLength(a.height, NaN)
   if (!(w > 0 && h > 0)) return null
-  let rx = a.rx !== undefined ? Number(a.rx) : NaN, ry = a.ry !== undefined ? Number(a.ry) : NaN
+  let rx = userLength(a.rx, NaN), ry = userLength(a.ry, NaN)
   if (!Number.isFinite(rx)) rx = Number.isFinite(ry) ? ry : 0
   if (!Number.isFinite(ry)) ry = rx
   rx = Math.min(Math.max(0, rx), w / 2); ry = Math.min(Math.max(0, ry), h / 2)
@@ -310,25 +326,81 @@ function pathsOf(name: string, a: Attributes, tol: number): { closed: boolean; p
   }
   if (name === 'path' && a.d) for (const sub of parsePathData(a.d, tol)) add(sub.points, sub.closed)
   else if (name === 'rect') { const p = rectPoints(a, tol); if (p) add(p, true) }
-  else if (name === 'circle') { const r = Number(a.r); if (r > 0) add(ellipsePoints(Number(a.cx ?? 0) || 0, Number(a.cy ?? 0) || 0, r, r, tol), true) }
+  else if (name === 'circle') { const r = userLength(a.r, NaN); if (r > 0) add(ellipsePoints(at0(userLength(a.cx)), at0(userLength(a.cy)), r, r, tol), true) }
   else if (name === 'ellipse') {
-    const rx = Number(a.rx), ry = Number(a.ry ?? a.rx)
-    if (rx > 0 && ry > 0) add(ellipsePoints(Number(a.cx ?? 0) || 0, Number(a.cy ?? 0) || 0, rx, ry, tol), true)
+    const rx = userLength(a.rx, NaN), ry = userLength(a.ry ?? a.rx, NaN)
+    if (rx > 0 && ry > 0) add(ellipsePoints(at0(userLength(a.cx)), at0(userLength(a.cy)), rx, ry, tol), true)
   } else if (name === 'polygon' || name === 'polyline') {
     const v = numbers(a.points ?? '')
     const points: Vec[] = []
     for (let k = 0; k + 1 < v.length; k += 2) points.push([v[k], v[k + 1]])
     add(points, name === 'polygon')
-  } else if (name === 'line') add([[Number(a.x1 ?? 0) || 0, Number(a.y1 ?? 0) || 0], [Number(a.x2 ?? 0) || 0, Number(a.y2 ?? 0) || 0]], false)
+  } else if (name === 'line') add([[at0(userLength(a.x1)), at0(userLength(a.y1))], [at0(userLength(a.x2)), at0(userLength(a.y2))]], false)
   return out
+}
+
+// Each element with an id, as the text it spans, for <use>.
+function elementsById(body: string): Map<string, string> {
+  const out = new Map<string, string>()
+  const stack: { name: string; id: string | null; start: number }[] = []
+  for (const tag of body.matchAll(/<(\/?)([A-Za-z_][\w:.-]*)([^>]*?)(\/?)>/g)) {
+    const [whole, closing, rawName, rest, selfClosing] = tag
+    const name = rawName.toLowerCase(), at = tag.index ?? 0
+    if (closing) {
+      const i = stack.map(f => f.name).lastIndexOf(name)
+      if (i < 0) continue
+      const f = stack[i]
+      stack.length = i
+      if (f.id && !out.has(f.id)) out.set(f.id, body.slice(f.start, at + whole.length))
+      continue
+    }
+    const id = attributesOf(rest).id ?? null
+    if (selfClosing) { if (id && !out.has(id)) out.set(id, whole) } else stack.push({ name, id, start: at })
+  }
+  return out
+}
+
+// <use> draws a copy of another element, moved by its x and y and its transform; a <symbol> is fitted to the
+// use's width and height as well. Copies are written out where they're used, three deep at most, before the
+// file is read, so a hole or a part drawn as a copy counts like any other.
+const USE = /<(?:svg:)?use\b([^>]*?)\/?>(?:\s*<\/(?:svg:)?use\s*>)?/gi
+function expandUses(body: string): string {
+  for (let depth = 0; depth < 3 && /<(?:svg:)?use\b/i.test(body); depth++) {
+    const byId = elementsById(body)
+    body = body.replace(USE, (_all, rest: string) => {
+      const a = attributesOf(rest)
+      const href = (a.href ?? a['xlink:href'] ?? '').trim()
+      const target = href.startsWith('#') ? byId.get(href.slice(1)) : undefined
+      if (!target) return ''
+      const start = /^<([\w:.-]+)([^>]*?)\/?>/.exec(target)
+      if (!start) return ''
+      const own = attributesOf(start[2])
+      let fit = ''
+      if (start[1].toLowerCase().replace(/^svg:/, '') === 'symbol') {
+        const vb = numbers(own.viewbox ?? ''), w = userLength(a.width, NaN), h = userLength(a.height, NaN)
+        if (vb.length === 4 && vb[2] > 0 && vb[3] > 0 && w > 0 && h > 0) {
+          const k = Math.min(w / vb[2], h / vb[3])
+          fit = ` matrix(${k} 0 0 ${k} ${(w - vb[2] * k) / 2 - vb[0] * k} ${(h - vb[3] * k) / 2 - vb[1] * k})`
+        }
+      }
+      // The copy loses its id, so it isn't copied again, and a symbol becomes a group that's drawn.
+      const copy = target.replace(/^<(?:svg:)?symbol\b/i, '<g').replace(/<\/(?:svg:)?symbol\s*>$/i, '</g>').replace(/^(<[^>]*?)\sid\s*=\s*("[^"]*"|'[^']*')/, '$1')
+      const keep = ['style', 'class', 'display', 'clip-path'].filter(k => a[k] !== undefined).map(k => ` ${k}="${a[k].replace(/"/g, '&quot;')}"`).join('')
+      return `<g transform="${a.transform ?? ''} translate(${at0(userLength(a.x))} ${at0(userLength(a.y))})${fit}"${keep}>${copy}</g>`
+    })
+    if (body.length > 64_000_000) throw new SvgShapeError(TOO_DETAILED)
+  }
+  return body
 }
 
 // Every path in a file, in millimetres from the page's top-left corner. tolerance: how far flattened curves
 // may stray, in mm.
 export function readSvgDrawing(text: string, tolerance = 0.02): SvgDrawing {
   if (!/<svg[\s>]/i.test(text)) throw new SvgShapeError('This file is not an SVG drawing.')
-  const illustrator = /Adobe Illustrator/i.test(text) || /data-name\s*=/.test(text)
-  const body = text.replace(/<!--[\s\S]*?-->/g, '').replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, '').replace(/<\?[\s\S]*?\?>/g, '').replace(/<!DOCTYPE[\s\S]*?>/gi, '')
+  // Illustrator's Save As writes a generator comment. Its Export As writes none, and data-name only for a layer whose
+  // name has a space ("Layer 1"), but it always styles shapes with classes named cls-1, cls-2 and so on.
+  const illustrator = /Adobe Illustrator/i.test(text) || /data-name\s*=/.test(text) || /\bclass\s*=\s*["'](?:[^"']*\s)?cls-\d+\b/.test(text)
+  const body = expandUses(text.replace(/<!--[\s\S]*?-->/g, '').replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, '').replace(/<\?[\s\S]*?\?>/g, '').replace(/<!DOCTYPE[\s\S]*?>/gi, ''))
 
   const paths: SvgPath[] = []
   let total = 0, element = 0, units: SizedBy = 'css'
@@ -342,9 +414,9 @@ export function readSvgDrawing(text: string, tolerance = 0.02): SvgDrawing {
   const isHidden = (a: Attributes) => hiddenBy(a, displayClass)
   const clips = new Map<string, { shapes: { points: Vec[]; element: number }[]; elements: number }>()
   const clipUses: { id: string; m: Matrix }[] = []
-  let clipTotal = 0, pictures = 0
-  // clip: the clipping path whose outline this element is part of
-  type Frame = { name: string; m: Matrix; skip: boolean; clip: string | null }
+  let clipTotal = 0, pictures = 0, texts = 0
+  // clip: the clipping path whose outline this element is part of; chose: a <switch> has found the child it draws
+  type Frame = { name: string; m: Matrix; skip: boolean; clip: string | null; chose?: boolean }
   const stack: Frame[] = []
   for (const tag of body.matchAll(/<(\/?)([A-Za-z_][\w:.-]*)([^>]*?)(\/?)>/g)) {
     const [, closing, rawName, rest, selfClosing] = tag
@@ -358,7 +430,14 @@ export function readSvgDrawing(text: string, tolerance = 0.02): SvgDrawing {
     const a = attributesOf(rest)
     const parent = stack[stack.length - 1]
     let m = parent ? parent.m : IDENTITY
-    const skip = Boolean(parent?.skip) || SKIP.has(name) || isHidden(a)
+    // A <switch> draws only its first child that a viewer can: Illustrator's "Preserve Illustrator Editing
+    // Capabilities" puts its own data in a <foreignObject> first, and the artwork after it.
+    let unchosen = false
+    if (parent?.name === 'switch' && !parent.skip) {
+      if (!parent.chose && name !== 'foreignobject' && a.requiredextensions === undefined && !isHidden(a)) parent.chose = true
+      else unchosen = true
+    }
+    const skip = Boolean(parent?.skip) || unchosen || SKIP.has(name) || isHidden(a)
     let clip: string | null = null
     if (name === 'clippath') {
       // objectBoundingBox clips are sized to whatever uses them, so they give no outline of their own.
@@ -366,6 +445,7 @@ export function readSvgDrawing(text: string, tolerance = 0.02): SvgDrawing {
       m = IDENTITY
     } else if (parent?.clip && !SKIP.has(name) && !isHidden(a)) clip = parent.clip
     if (name === 'image' && !parent?.skip && !isHidden(a)) pictures++
+    if (name === 'text' && !parent?.skip && !unchosen && !isHidden(a)) texts++
     if (name === 'svg' && !parent) {
       const vb = numbers(a.viewbox ?? '')
       const w = lengthMm(a.width), h = lengthMm(a.height)
@@ -444,13 +524,17 @@ export function readSvgDrawing(text: string, tolerance = 0.02): SvgDrawing {
     }
     fromClip = paths.length > 0
   }
-  if (!paths.length) throw new SvgShapeError(pictures ? PICTURE_ONLY : 'This SVG has no paths or shapes to use.')
-  // Without a usable page size, the drawing's own extent is the page.
+  if (!paths.length) throw new SvgShapeError(texts ? LIVE_TYPE : pictures ? PICTURE_ONLY : 'This SVG has no paths or shapes to use.')
+  // Without a usable page size, the page runs from the origin to the drawing's far corner. A drawing reaching
+  // above or left of the origin is moved onto it, so none of it is lost off the sheet.
   if (!(pageW > 0 && pageH > 0)) {
-    let x1 = 0, y1 = 0
-    for (const p of paths) for (const [x, y] of p.points) { x1 = Math.max(x1, x); y1 = Math.max(y1, y) }
-    pageW = x1; pageH = y1
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+    for (const p of paths) for (const [x, y] of p.points) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y) }
+    if (!(x1 > x0 && y1 > y0)) throw new SvgShapeError('This SVG’s shapes have no area, and the file doesn’t say its size, so there is nothing to grow in.')
+    const dx = x0 < 0 ? -x0 : 0, dy = y0 < 0 ? -y0 : 0
+    if (dx || dy) for (const p of paths) p.points = p.points.map(([x, y]): Vec => [x + dx, y + dy])
+    pageW = x1 + dx; pageH = y1 + dy
   }
-  return { width: pageW, height: pageH, paths, units, fromClip }
+  return { width: pageW, height: pageH, paths, units, fromClip, clipped: fromClip ? 0 : clipUses.length, texts }
 }
 

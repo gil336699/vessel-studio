@@ -59,6 +59,18 @@ describe('changes to a design', () => {
     expect(applyPreset({ ...DEFAULTS, shape: 'rect' }, 'arterial').shape).toBe('ellipse')
   })
 
+  it('never stretches an imported outline: a sheet of other proportions fits it and centres it', () => {
+    // Gil's pill page is 296.4 × 160.5 mm. Typed down to 10 mm wide, the sheet can't be under 10 mm tall.
+    const imported: Imported = { name: 'pill.svg', sized: 'illustrator', width: 296.4, height: 160.5, rings: [square(0, 0, 296.4, 160.5)] }
+    const [ring] = shapeRings({ ...DEFAULTS, width: 10, height: 10, shape: 'imported' }, imported)
+    const k = 10 / 296.4
+    expect(ring[0][0]).toBeCloseTo(0, 9)
+    expect(ring[2][0]).toBeCloseTo(10, 9)
+    // As tall as it should be for its width, and centred top to bottom.
+    expect(ring[2][1] - ring[0][1]).toBeCloseTo(160.5 * k, 9)
+    expect(ring[0][1]).toBeCloseTo((10 - 160.5 * k) / 2, 9)
+  })
+
   it('scales an imported outline with the sheet, keeping its place on the page', () => {
     const imported: Imported = { name: 'shape.svg', sized: 'file', width: 100, height: 100, rings: [square(5, 5, 95, 95)] }
     const s = { ...DEFAULTS, width: 200, height: 200, shape: 'imported' as const }

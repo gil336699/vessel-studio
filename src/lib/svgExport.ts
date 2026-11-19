@@ -2,7 +2,7 @@
 // export it holds what the view shows, each part in its own group, which Illustrator opens as a layer and Inkscape
 // (and so AxiDraw) as a layer too. Each vein between two forks is one path with its own width, in millimetres.
 // There is no background rectangle: laser software would engrave a filled one.
-import { smoothChain } from '../veins/network'
+import { smoothChain, type Cubic } from '../veins/network'
 import { num } from './format'
 import type { Scene } from './scene'
 import type { Settings } from './settings'
@@ -20,13 +20,15 @@ function sizeAttributes(s: Settings): string {
 
 const layer = (id: string, label: string) => `id="${id}" inkscape:groupmode="layer" inkscape:label="${label}"`
 
-// A vein's path data, smoothed through its points or straight between them, in pieces if very long.
-export function veinPaths(points: [number, number][], smooth: boolean): string[] {
+// A vein's path data, smoothed through its points (along `curves` when given, one a segment) or straight between
+// them, in pieces if very long.
+export function veinPaths(points: [number, number][], smooth: boolean, curves?: Cubic[]): string[] {
   const out: string[] = []
   for (let start = 0; start < points.length - 1; start += MAX_PATH_SEGMENTS) {
     const piece = points.slice(start, Math.min(points.length, start + MAX_PATH_SEGMENTS + 1))
     let d = `M${num(piece[0][0])} ${num(piece[0][1])}`
-    if (smooth && piece.length > 2) for (const [a, b, c, e, x, y] of smoothChain(piece)) d += `C${num(a)} ${num(b)} ${num(c)} ${num(e)} ${num(x)} ${num(y)}`
+    const along = curves ? curves.slice(start, start + piece.length - 1) : null
+    if (smooth && piece.length > 2) for (const [a, b, c, e, x, y] of along ?? smoothChain(piece)) d += `C${num(a)} ${num(b)} ${num(c)} ${num(e)} ${num(x)} ${num(y)}`
     else for (let i = 1; i < piece.length; i++) d += `L${num(piece[i][0])} ${num(piece[i][1])}`
     out.push(d)
   }
@@ -46,7 +48,7 @@ export function designSvg(scene: Scene, s: Settings): string {
     svg += `<g ${layer('veins', 'Veins')} fill="none" stroke="${s.veinColor}" stroke-linecap="round" stroke-linejoin="round">\n`
     for (const chain of scene.veins) {
       const w = num(chain.width, 4)
-      for (const d of veinPaths(chain.points, s.smooth)) svg += `<path stroke-width="${w}" d="${d}"/>\n`
+      for (const d of veinPaths(chain.points, s.smooth, chain.curves)) svg += `<path stroke-width="${w}" d="${d}"/>\n`
     }
     svg += `</g>\n`
   }

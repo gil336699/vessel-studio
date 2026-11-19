@@ -6,6 +6,7 @@ import type { Stats } from '../useVeins'
 import { Button } from './Controls'
 import { Icon, type IconName } from './Icon'
 import type { Tool } from './Stage'
+import { touchFirst } from '../lib/touch'
 
 // The floating bars round the sheet: tools and what's shown on top, growth controls and status below, and the
 // measurements panel.
@@ -19,13 +20,18 @@ const TOOL_CAPTION: Record<Tool, string> = {
   roots: 'Click to add a root · Drag one to move it · Alt-click to remove · Space+drag to pan · Scroll to zoom',
   pan: 'Drag to move the view · Scroll or pinch to zoom · Esc for Roots',
 }
+const TOUCH_CAPTION: Record<Tool, string> = {
+  roots: 'Tap to add a root · Drag one to move it · Press and hold one to remove it · Pinch to zoom, two fingers to pan',
+  pan: 'Drag to move the view · Pinch to zoom',
+}
 
 export type ViewKey = 'showVeins' | 'showAttractors' | 'showBoundary' | 'showRoots'
-const VIEW: { key: ViewKey; label: string; shortcut: string; tip: string }[] = [
-  { key: 'showVeins', label: 'Veins', shortcut: '1', tip: 'Show or hide the veins. Exports include them when they’re shown.' },
-  { key: 'showAttractors', label: 'Attractors', shortcut: '2', tip: 'Show or hide the attractors still in play: the points veins grow toward. Exports include them when they’re shown.' },
-  { key: 'showBoundary', label: 'Shape', shortcut: '3', tip: 'Show or hide the shape’s outline. Exports include it when it’s shown.' },
-  { key: 'showRoots', label: 'Roots', shortcut: '4', tip: 'Show or hide the roots, where veins start. Exports include them when they’re shown.' },
+// Named "Show …" for screen readers, so the Roots toggle isn't mistaken for the Roots tool.
+const VIEW: { key: ViewKey; label: string; name: string; shortcut: string; tip: string }[] = [
+  { key: 'showVeins', label: 'Veins', name: 'Show veins', shortcut: '1', tip: 'Show or hide the veins; exports hold what’s shown.' },
+  { key: 'showAttractors', label: 'Attractors', name: 'Show attractors', shortcut: '2', tip: 'Show or hide the attractors still in play, the points veins grow toward; exports hold what’s shown.' },
+  { key: 'showBoundary', label: 'Shape', name: 'Show the shape’s outline', shortcut: '3', tip: 'Show or hide the shape’s outline; exports hold what’s shown.' },
+  { key: 'showRoots', label: 'Roots', name: 'Show roots', shortcut: '4', tip: 'Show or hide the roots, where veins start; exports hold what’s shown.' },
 ]
 
 export function ViewBar({ tool, setTool, s, toggle, zoom, onFit, onZoom }: {
@@ -39,14 +45,14 @@ export function ViewBar({ tool, setTool, s, toggle, zoom, onFit, onZoom }: {
           <Icon name={t.icon} /><span className="compact-label">{t.label}</span></Button>)}
       </div>
       <div className="floating-bar glass" role="toolbar" aria-label="Show">
-        {VIEW.map(v => <Button key={v.key} pressed={s[v.key]} shortcut={v.shortcut} tip={v.tip} onClick={() => toggle(v.key)}>{v.label}</Button>)}
+        {VIEW.map(v => <Button key={v.key} pressed={s[v.key]} shortcut={v.shortcut} tip={v.tip} label={v.name} onClick={() => toggle(v.key)}>{v.label}</Button>)}
         <span className="bar-divider" aria-hidden="true" />
         <Button className="icon-button zoom-step" label="Zoom out" shortcut="−" tip="Zoom out." onClick={() => onZoom(1 / 1.25)}><Icon name="minus" /></Button>
         <Button className="zoom-readout" shortcut="F" tip="Fit the whole sheet in the window." label={`Zoom ${Math.round(zoom * 100)} percent. Fit to window`} onClick={onFit}>{Math.round(zoom * 100)}%</Button>
         <Button className="icon-button zoom-step" label="Zoom in" shortcut="+" tip="Zoom in." onClick={() => onZoom(1.25)}><Icon name="plus" /></Button>
       </div>
     </div>
-    <p className="view-caption"><span>{TOOL_CAPTION[tool]}</span></p>
+    <p className="view-caption"><span>{(touchFirst() ? TOUCH_CAPTION : TOOL_CAPTION)[tool]}</span></p>
   </div>
 }
 
@@ -67,7 +73,7 @@ export function Dock({ running, stopping, canGrow, onGrow, onPause, onStep, onRe
         <Button shortcut="S" unavailable={busy || canGrow} tip="Grow by a single step." onClick={onStep}><Icon name="step" /><span className="compact-label">Step</span></Button>
         <Button shortcut="R" unavailable={canReset} tip="Go back to the roots, before any growth. Undo brings the veins back." onClick={onReset}><Icon name="reset" /><span className="compact-label">Reset</span></Button>
       </div>
-      <span className="timeline-status" role="status" data-warning={warning}>{status}</span>
+      <span className="timeline-status" role="status" data-warning={warning} data-tip={typeof status === 'string' && status.length > 90 ? status : undefined}>{status}</span>
       <div className="transport" role="group" aria-label="History">
         <Button className="icon-button" label="Undo" shortcut="⌘Z" unavailable={!canUndo && 'Nothing to undo yet.'} tip="Undo the last change. Undoing while veins grow pauses them first." onClick={onUndo}><Icon name="undo" /></Button>
         <Button className="icon-button" label="Redo" shortcut="⇧⌘Z" unavailable={!canRedo && 'Nothing to redo.'} tip="Redo the change you undid." onClick={onRedo}><Icon name="redo" /></Button>

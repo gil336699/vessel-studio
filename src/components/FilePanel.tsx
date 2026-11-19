@@ -17,24 +17,23 @@ export const FilePanel = memo(function FilePanel({ s, change, contents, unsaved,
   const pngBlocked = pngProblem(pw, ph)
   const fileUnits = s.units === 'in' ? 'inches' : s.units === 'pt' ? 'points' : s.units === 'px' ? 'pixels' : 'millimetres'
   const nothing = !contents.length && 'Nothing is shown, so there’s nothing to export. Turn on Veins, Shape, Attractors or Roots in the bar above the sheet.'
-  const vectorParts = contents.filter(c => c !== 'the background')
   return <>
     <Section title="Project">
       <p className="hint save-state">{unsaved ? <><span className="dot" aria-hidden="true" />Unsaved changes since the last save.</> : 'All changes saved.'}</p>
       <div className="button-row three">
         <Button tip="Start a new design with the default settings." onClick={onNew}>New</Button>
         <Button tip="Open a Vessel Studio project file (.vessel.json)." shortcut="⌘O" onClick={onOpen}>Open…</Button>
-        <Button className="primary" tip="Save the settings, shape, roots, attractors and every vein point as a project file you can reopen and keep growing exactly where it stopped." shortcut="⌘S" unavailable={busy} onClick={onSave}>Save</Button>
+        <Button className="primary" tip="Save everything as a project file, to reopen and keep growing exactly where it stopped." shortcut="⌘S" unavailable={busy} onClick={onSave}>Save</Button>
       </div>
       {openError && <p className="hint error" role="alert">{openError}</p>}
     </Section>
 
     <Section title="For Illustrator, plotters and lasers">
       <div className="button-row">
-        <Button tip={`Veins as paths at real size, sized in ${fileUnits}, one path per vein between forks with its own width, each part on its own layer. Opens in Illustrator, Inkscape and laser software.`} unavailable={busy || nothing} onClick={() => onExport('svg')}>SVG</Button>
-        <Button tip={`AutoCAD R12 DXF in ${s.units === 'in' ? 'inches' : 'millimetres'}: veins as centre-line polylines, each part on its own layer, for Fusion, CAD and CAM.`} unavailable={busy || nothing} onClick={() => onExport('dxf')}>DXF</Button>
+        <Button tip={`Veins at real size in ${fileUnits}, one path per vein with its own width, each part in its own group.`} unavailable={busy || nothing} onClick={() => onExport('svg')}>SVG</Button>
+        <Button tip={`DXF in ${s.units === 'in' ? 'inches' : 'millimetres'}, veins as centre lines with each part on its own layer, for Fusion, CAD and CAM.`} unavailable={busy || nothing} onClick={() => onExport('dxf')}>DXF</Button>
       </div>
-      <p className="hint">{nothing || `Exports hold what the view shows: ${listWords(vectorParts)}. SVG and DXF leave out the background, so laser software doesn’t engrave it. DXF has no line widths, so its veins are centre lines.`}
+      <p className="hint">{nothing || `Exports hold what the view shows: ${listWords(contents)}. SVG and DXF leave out the background, so laser software doesn’t engrave it. DXF has no line widths, so its veins are centre lines.`}
         {fromFile ? ' The page matches the imported SVG: open the SVG in Illustrator, copy it all, and use Edit › Paste in Place in your file to line it up with your artwork.' : ''}</p>
     </Section>
 

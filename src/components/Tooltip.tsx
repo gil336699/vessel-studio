@@ -90,6 +90,14 @@ export function TooltipLayer() {
     }
     const onBlur = () => { if (anchor && mode === 'focus') hide() }
     const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') hide() }
+    // Focusing a control can scroll its panel: a tooltip opened by focus moves with it, until it scrolls out of view.
+    const onScroll = () => {
+      if (anchor && mode === 'focus' && anchor.isConnected) {
+        const box = anchor.getBoundingClientRect()
+        if (box.bottom > 0 && box.top < window.innerHeight) { place(anchor); return }
+      }
+      hide()
+    }
 
     document.addEventListener('pointerover', onOver)
     document.addEventListener('pointerout', onOut)
@@ -97,7 +105,7 @@ export function TooltipLayer() {
     document.addEventListener('focusin', onFocus)
     document.addEventListener('focusout', onBlur)
     document.addEventListener('keydown', onKey, true)
-    document.addEventListener('scroll', hide, true)
+    document.addEventListener('scroll', onScroll, true)
     window.addEventListener('blur', hide)
     window.addEventListener('resize', hide)
     return () => {
@@ -108,7 +116,7 @@ export function TooltipLayer() {
       document.removeEventListener('focusin', onFocus)
       document.removeEventListener('focusout', onBlur)
       document.removeEventListener('keydown', onKey, true)
-      document.removeEventListener('scroll', hide, true)
+      document.removeEventListener('scroll', onScroll, true)
       window.removeEventListener('blur', hide)
       window.removeEventListener('resize', hide)
       tip.remove()

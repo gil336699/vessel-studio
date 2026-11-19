@@ -58,6 +58,16 @@ describe('the session kept between visits', () => {
     expect(c.map.get('s')).toBe('new')
     expect(c.map.get('u')).toBe('1')
   })
+
+  it('doesn’t build a copy an estimate already shows is too big', () => {
+    const a = store()
+    let built = 0
+    expect(keepSession(a, 's', 'u', () => { built++; return 'x'.repeat(50) }, true, 20, 900)).toBe('too-big')
+    expect(built).toBe(0)
+    expect(a.map.has('s')).toBe(false)
+    expect(keepSession(a, 's', 'u', () => { built++; return 'new' }, true, 20, 3)).toBe('kept')
+    expect(built).toBe(1)
+  })
 })
 
 describe('undo history', () => {

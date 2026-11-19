@@ -42,9 +42,9 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene, s: Settin
     for (const [w, list] of groups) {
       ctx.lineWidth = w / 20 / k
       ctx.beginPath()
-      for (const { points } of list) {
+      for (const { points, curves } of list) {
         ctx.moveTo(points[0][0], points[0][1])
-        if (s.smooth && points.length > 2) for (const [a, b, c, d, x, y] of smoothChain(points)) ctx.bezierCurveTo(a, b, c, d, x, y)
+        if (s.smooth && points.length > 2) for (const [a, b, c, d, x, y] of curves ?? smoothChain(points)) ctx.bezierCurveTo(a, b, c, d, x, y)
         else for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1])
       }
       ctx.stroke()

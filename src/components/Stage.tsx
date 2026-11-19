@@ -15,7 +15,7 @@ type Drag =
   | { kind: 'pan'; startX: number; startY: number; panX: number; panY: number }
   // A press on empty sheet. It adds a root when released, unless it moved or a second finger made it a pinch.
   | { kind: 'tap'; clientX: number; clientY: number }
-  | { kind: 'root'; index: number; moved: boolean; x: number; y: number }
+  | { kind: 'root'; index: number; moved: boolean; x: number; y: number; startX: number; startY: number; touch: boolean }
   | { kind: 'pinch'; distance: number; view: View; worldX: number; worldY: number }
 
 const ZOOM_MIN = 0.25, ZOOM_MAX = 80
@@ -147,11 +147,20 @@ export function Stage({ scene, settings, roots, region, tool, frameRef, controlR
     return () => el.removeEventListener('wheel', onWheel)
   }, [zoomAround])
 
-  // Space held while dragging pans; a tap of Space on its own grows or pauses.
+  // Space held while dragging pans; a tap of Space on its own grows or pauses. A button, slider or switch last
+  // pressed with the pointer keeps focus, but Space still grows rather than pressing it again; reached with the
+  // keyboard, Space works it as usual.
   const tapRef = useRef(onSpaceTap)
   useEffect(() => { tapRef.current = onSpaceTap }, [onSpaceTap])
+  const hold = useRef(0)
+  const pressed = useRef<Element | null>(null)
   useEffect(() => {
-    const ignored = (event: KeyboardEvent) => event.target instanceof Element && Boolean(event.target.closest('input, select, textarea, button, [role=dialog], [role=alertdialog]'))
+    const CONTROL = 'button, input[type=range], input[type=checkbox]'
+    const pointer = (event: PointerEvent) => { pressed.current = event.target instanceof Element ? event.target.closest(CONTROL) : null }
+    const tab = (event: KeyboardEvent) => { if (event.key === 'Tab') pressed.current = null }
+    const byPointer = (event: KeyboardEvent) => event.target instanceof Element && pressed.current !== null
+      && event.target.closest(CONTROL) === pressed.current && !event.target.closest('[role=dialog], [role=alertdialog]')
+    const ignored = (event: KeyboardEvent) => event.target instanceof Element && Boolean(event.target.closest('input, select, textarea, button, [role=dialog], [role=alertdialog]')) && !byPointer(event)
     const down = (event: KeyboardEvent) => {
       if (event.code !== 'Space' || ignored(event)) return
       event.preventDefault()
@@ -161,14 +170,20 @@ export function Stage({ scene, settings, roots, region, tool, frameRef, controlR
     }
     const up = (event: KeyboardEvent) => {
       if (event.code !== 'Space' || !space.current.down) return
+      event.preventDefault()
       const tapped = !space.current.panned
       space.current = { down: false, panned: false }
       setCursor(toolCursor)
       if (tapped) tapRef.current()
     }
+    window.addEventListener('pointerdown', pointer, true)
+    window.addEventListener('keydown', tab, true)
     window.addEventListener('keydown', down)
     window.addEventListener('keyup', up)
-    return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up) }
+    return () => {
+      window.removeEventListener('pointerdown', pointer, true); window.removeEventListener('keydown', tab, true)
+      window.removeEventListener('keydown', down); window.removeEventListener('keyup', up)
+    }
   }, [toolCursor])
   useEffect(() => { if (!space.current.down) setCursor(toolCursor) }, [toolCursor])
 
@@ -204,7 +219,20 @@ export function Stage({ scene, settings, roots, region, tool, frameRef, controlR
     const [x, y] = toWorld(event.clientX, event.clientY)
     const hit = rootAt(x, y, event.pointerType === 'touch')
     if (hit >= 0 && event.altKey) { onRemoveRoot(hit); setHover(null); return }
-    if (hit >= 0) { drag.current = { kind: 'root', index: hit, moved: false, x: roots[hit][0], y: roots[hit][1] }; return }
+    if (hit >= 0) {
+      const touch = event.pointerType === 'touch'
+      drag.current = { kind: 'root', index: hit, moved: false, x: roots[hit][0], y: roots[hit][1], startX: event.clientX, startY: event.clientY, touch }
+      // On a touch screen, which has no Alt key, pressing and holding a root removes it.
+      window.clearTimeout(hold.current)
+      if (touch) hold.current = window.setTimeout(() => {
+        const d = drag.current
+        if (d?.kind !== 'root' || d.index !== hit || d.moved) return
+        drag.current = null
+        setMoving(null)
+        onRemoveRoot(hit)
+      }, 600)
+      return
+    }
     if (x < 0 || y < 0 || x > settings.width || y > settings.height) return
     drag.current = { kind: 'tap', clientX: event.clientX, clientY: event.clientY }
   }
@@ -212,7 +240,11 @@ export function Stage({ scene, settings, roots, region, tool, frameRef, controlR
   const addRootAt = (clientX: number, clientY: number) => {
     const [x, y] = toWorld(clientX, clientY)
     const p = inside(x, y)
-    if (!p) { onNotice(settings.clearance > 0 ? 'Roots go inside the shape, clear of its edges by the edge clearance. Click further inside, or lower the clearance.' : 'Roots go inside the shape. Click inside it.'); return }
+    if (!p) {
+      const where = settings.invert ? 'in the space round the shape, as it grows outside it' : 'inside the shape'
+      onNotice(settings.clearance > 0 ? `Roots go ${where}, clear of its edges by the edge clearance. Click further in, or lower the clearance.` : `Roots go ${where}. Click there.`)
+      return
+    }
     const moved = !region.contains(x, y) ? 'outside' : settings.clearance > 0 && (p[0] !== x || p[1] !== y) ? 'clearance' : null
     onAddRoot(p[0], p[1], moved)
   }
@@ -235,6 +267,9 @@ export function Stage({ scene, settings, roots, region, tool, frameRef, controlR
     if (d?.kind === 'tap' && Math.hypot(event.clientX - d.clientX, event.clientY - d.clientY) > 8) drag.current = null
     const [x, y] = toWorld(event.clientX, event.clientY)
     if (d?.kind === 'root') {
+      // A finger wobbles: a press that stays within 8 px holds the root still, for press and hold.
+      if (d.touch && !d.moved && Math.hypot(event.clientX - d.startX, event.clientY - d.startY) < 8) return
+      window.clearTimeout(hold.current)
       const p = inside(x, y)
       if (!p) return
       d.moved = true; d.x = p[0]; d.y = p[1]
@@ -248,6 +283,7 @@ export function Stage({ scene, settings, roots, region, tool, frameRef, controlR
   }
 
   const onPointerUp = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    window.clearTimeout(hold.current)
     pointers.current.delete(event.pointerId)
     const d = drag.current
     if (d?.kind === 'pinch' && pointers.current.size === 1) {

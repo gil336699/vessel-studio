@@ -3,8 +3,6 @@
 export type Units = 'mm' | 'in' | 'pt' | 'px'
 
 export const UNIT_LABEL: Record<Units, string> = { mm: 'mm', in: 'in', pt: 'pt', px: 'px' }
-export const UNIT_NAME: Record<Units, string> = { mm: 'millimetres', in: 'inches', pt: 'points', px: 'pixels' }
-
 export function mmPerUnit(units: Units, dpi: number): number {
   switch (units) {
     case 'mm': return 1
@@ -38,12 +36,6 @@ export function formatLength(mm: number, units: Units, dpi: number, small = fals
 }
 
 // Like formatLength, but a tiny non-zero length reads "under 0.01 mm" instead of "0 mm".
-export function formatSmall(mm: number, units: Units, dpi: number): string {
-  const digits = decimals(units, true)
-  if (mm > 0 && Number(toUnits(mm, units, dpi).toFixed(digits)) === 0) return `under ${10 ** -digits} ${UNIT_LABEL[units]}`
-  return formatLength(mm, units, dpi, true)
-}
-
 export function trimZeros(text: string): string {
   return text.includes('.') ? text.replace(/\.?0+$/, '') : text
 }

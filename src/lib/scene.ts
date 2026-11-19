@@ -2,7 +2,8 @@
 // widths, the attractors still in play and the roots. The screen, the PNG, the SVG and the DXF all draw this,
 // so they always match.
 import type { Ring, Vec } from '../veins/geometry'
-import { chains, veinWidths, type Chain } from '../veins/network'
+import { chains, safeCurves, veinWidths, type Chain } from '../veins/network'
+import type { Region } from '../veins/region'
 import { widthSettings, type Settings } from './settings'
 
 export type Mirror = { x: ArrayLike<number>; y: ArrayLike<number>; parent: ArrayLike<number>; joins: ArrayLike<number>; points: number }
@@ -29,6 +30,13 @@ export function sceneOf(s: Settings, rings: Ring[], net: Mirror, attractors: Flo
     attractors: live,
     roots: s.showRoots && roots.length ? roots : null,
   }
+}
+
+// The scene for an export, with each smoothed vein's curves worked out so they stay inside the shape and clear of its
+// edges (see safeCurves). The screen draws the plain curves: the difference is far below a pixel there.
+export function forExport(scene: Scene, s: Settings, region: Region): Scene {
+  if (!s.smooth || !scene.veins) return scene
+  return { ...scene, veins: scene.veins.map(c => (c.points.length > 2 ? { ...c, curves: safeCurves(c.points, region, s.clearance) } : c)) }
 }
 
 // What an export will hold, in plain words, for the File tab.

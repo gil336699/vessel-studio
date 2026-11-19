@@ -9,6 +9,8 @@ export class Region {
   readonly rings: Ring[]
   readonly box: Box
   readonly area: number
+  // How many other rings each ring lies inside: even for an outline, odd for a hole.
+  readonly depths: number[]
   // One convex outline: any two inside points see each other, so line-of-sight tests can be skipped.
   readonly convex: boolean
   readonly edgeCount: number
@@ -29,6 +31,9 @@ export class Region {
   private ny = 1
   private cellStart: Int32Array
   private cellItems: Int32Array
+  // For each cell, how many cells away the nearest cell with an edge is (Chebyshev), so distance searches
+  // can stop early and skip points far from every edge.
+  private ring: Int32Array
   private stamp: Int32Array
   private query = 0
 
@@ -38,10 +43,9 @@ export class Region {
     // Even-odd: a ring inside an odd number of other rings is a hole, so its area counts against the total.
     // Rings whose boxes don't meet can't be nested, which skips most pairs in a drawing of many outlines.
     const boxes = this.rings.map(r => boxOf([r]))
-    this.area = Math.max(0, this.rings.reduce((sum, ring, i) => {
-      const depth = this.rings.reduce((k, other, j) => k + (j !== i && boxesOverlap(boxes[i], boxes[j]) && ringInside(ring, other) ? 1 : 0), 0)
-      return sum + (depth % 2 ? -1 : 1) * Math.abs(signedArea(ring))
-    }, 0))
+    this.depths = this.rings.map((ring, i) => this.rings.reduce((k, other, j) => k + (j !== i && boxesOverlap(boxes[i], boxes[j]) && ringInside(ring, other) ? 1 : 0), 0))
+    const exact = Math.max(0, this.rings.reduce((sum, ring, i) => sum + (this.depths[i] % 2 ? -1 : 1) * Math.abs(signedArea(ring)), 0))
+    this.area = exact
     this.convex = this.rings.length === 1 && isConvex(this.rings[0])
     const edges: number[] = []
     for (const ring of this.rings) for (let i = 0; i < ring.length; i++) {
@@ -75,29 +79,79 @@ export class Region {
       for (let b = b0; b <= b1; b++) this.bandItems[fill[b]++] = i
     }
 
+    // A ring that crosses itself, as a bow tie or a figure of eight does, cancels its own signed area; a count of
+    // points inside on a grid tells. Only a count far above the signed area replaces it, so every other shape keeps
+    // its exact area.
+    const counted = (n: number) => {
+      let hits = 0
+      for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) if (this.contains(x0 + ((i + 0.5) / n) * w, y0 + ((j + 0.5) / n) * h)) hits++
+      return (hits / (n * n)) * w * h
+    }
+    if (n > 0 && exact < 0.5 * counted(64)) this.area = counted(256)
+
     // Grid: about one edge per cell, cells no smaller than 1/512 of the shape.
     this.cell = Math.max(Math.max(w, h) / 512, Math.sqrt((w * h) / Math.max(16, n)))
     this.gx0 = x0 - this.cell * 0.5; this.gy0 = y0 - this.cell * 0.5
     this.nx = Math.max(1, Math.ceil(w / this.cell) + 1); this.ny = Math.max(1, Math.ceil(h / this.cell) + 1)
     const cells = this.nx * this.ny
     const count = new Int32Array(cells + 1)
+    // Each edge goes in every cell its box covers. A long edge is taken a cell's length at a time, so a diagonal
+    // across the shape fills a strip of cells, not a square: every cell it touches is still covered.
+    const mark = new Int32Array(cells)
+    let pass = 0
     const each = (i: number, fn: (c: number) => void) => {
-      const cx0 = this.cx(Math.min(this.ex0[i], this.ex1[i])), cx1 = this.cx(Math.max(this.ex0[i], this.ex1[i]))
-      const cy0 = this.cy(Math.min(this.ey0[i], this.ey1[i])), cy1 = this.cy(Math.max(this.ey0[i], this.ey1[i]))
-      for (let j = cy0; j <= cy1; j++) for (let k = cx0; k <= cx1; k++) fn(j * this.nx + k)
+      const x0 = this.ex0[i], y0 = this.ey0[i], x1 = this.ex1[i], y1 = this.ey1[i]
+      const pieces = Math.max(1, Math.ceil(Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0)) / this.cell))
+      const stamp = pass * n + i + 1
+      for (let p = 0; p < pieces; p++) {
+        const t0 = p / pieces, t1 = (p + 1) / pieces
+        const ax = x0 + (x1 - x0) * t0, ay = y0 + (y1 - y0) * t0, bx = p + 1 === pieces ? x1 : x0 + (x1 - x0) * t1, by = p + 1 === pieces ? y1 : y0 + (y1 - y0) * t1
+        const cx0 = this.cx(Math.min(ax, bx)), cx1 = this.cx(Math.max(ax, bx)), cy0 = this.cy(Math.min(ay, by)), cy1 = this.cy(Math.max(ay, by))
+        for (let j = cy0; j <= cy1; j++) for (let k = cx0; k <= cx1; k++) {
+          const c = j * this.nx + k
+          if (mark[c] === stamp) continue
+          mark[c] = stamp
+          fn(c)
+        }
+      }
     }
     for (let i = 0; i < n; i++) each(i, c => { count[c + 1]++ })
     for (let c = 0; c < cells; c++) count[c + 1] += count[c]
     this.cellStart = count.slice()
     this.cellItems = new Int32Array(count[cells])
     const at = count.slice()
+    pass = 1
     for (let i = 0; i < n; i++) each(i, c => { this.cellItems[at[c]++] = i })
+
+    // Rings to the nearest cell with an edge, breadth first from every such cell.
+    this.ring = new Int32Array(cells).fill(-1)
+    let queue = new Int32Array(cells), head = 0, tail = 0
+    for (let c = 0; c < cells; c++) if (this.cellStart[c + 1] > this.cellStart[c]) { this.ring[c] = 0; queue[tail++] = c }
+    if (tail === 0) this.ring.fill(Math.max(this.nx, this.ny))
+    while (head < tail) {
+      const c = queue[head++], ci = c % this.nx, cj = (c - ci) / this.nx, next = this.ring[c] + 1
+      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+        const i2 = ci + di, j2 = cj + dj
+        if (i2 < 0 || j2 < 0 || i2 >= this.nx || j2 >= this.ny) continue
+        const c2 = j2 * this.nx + i2
+        if (this.ring[c2] >= 0) continue
+        this.ring[c2] = next
+        queue[tail++] = c2
+      }
+    }
+    queue = new Int32Array(0)
   }
 
   private cx(x: number) { return Math.min(this.nx - 1, Math.max(0, Math.floor((x - this.gx0) / this.cell))) }
   private cy(y: number) { return Math.min(this.ny - 1, Math.max(0, Math.floor((y - this.gy0) / this.cell))) }
 
   get empty(): boolean { return this.edgeCount === 0 }
+
+  // The separate parts of the shape, as their outlines (rings that aren't holes), largest first: each letter of a
+  // word, each island of a map.
+  parts(): Ring[] {
+    return this.rings.filter((_, i) => this.depths[i] % 2 === 0).sort((a, b) => Math.abs(signedArea(b)) - Math.abs(signedArea(a)))
+  }
 
   // Even-odd: inside when a ray to the right crosses an odd number of edges.
   contains(x: number, y: number): boolean {
@@ -138,9 +192,66 @@ export class Region {
     return this.convex || !this.crosses(ax, ay, bx, by)
   }
 
-  // Distance to the nearest edge, or maxR when none is that close.
+  // Distance to the nearest edge, or maxR when none is that close. Searches outward a ring of cells at a time and
+  // stops once no nearer edge can be left: every cell r rings out is at least r − 1 cells away. Exactly the
+  // distance a search of every cell within maxR gives.
   edgeDistance(x: number, y: number, maxR: number): number {
     if (this.edgeCount === 0) return maxR
+    const i = Math.floor((x - this.gx0) / this.cell), j = Math.floor((y - this.gy0) / this.cell)
+    if (!(i >= 0 && j >= 0 && i < this.nx && j < this.ny)) return this.edgeDistanceInBox(x, y, maxR)
+    const first = this.ring[j * this.nx + i]
+    if ((first - 1) * this.cell >= maxR) return maxR
+    let best = maxR
+    this.outward(x, y, i, j, first, maxR, e => {
+      const d = toSegment(x, y, this.ex0[e], this.ey0[e], this.ex1[e], this.ey1[e]).d
+      if (d < best) best = d
+      return false
+    }, () => best)
+    return best
+  }
+
+  // Whether any edge is nearer than r, stopping at the first one found: the same answer as
+  // edgeDistance(x, y, r) < r, sooner.
+  nearEdge(x: number, y: number, r: number): boolean {
+    if (this.edgeCount === 0 || !(r > 0)) return false
+    const i = Math.floor((x - this.gx0) / this.cell), j = Math.floor((y - this.gy0) / this.cell)
+    if (!(i >= 0 && j >= 0 && i < this.nx && j < this.ny)) return this.edgeDistanceInBox(x, y, r) < r
+    const first = this.ring[j * this.nx + i]
+    if ((first - 1) * this.cell >= r) return false
+    let hit = false
+    this.outward(x, y, i, j, first, r, e => (hit = toSegment(x, y, this.ex0[e], this.ey0[e], this.ex1[e], this.ey1[e]).d < r), () => r)
+    return hit
+  }
+
+  // Visits the edges in cell (i, j) and then ring after ring of cells round it, from ring `first`, within maxR of
+  // (x, y), until no unvisited cell can hold an edge nearer than bound() or visit returns true. Each edge once.
+  private outward(x: number, y: number, i: number, j: number, first: number, maxR: number, visit: (edge: number) => boolean, bound: () => number) {
+    const q = ++this.query
+    const c0 = this.cx(x - maxR), c1 = this.cx(x + maxR), r0 = this.cy(y - maxR), r1 = this.cy(y + maxR)
+    const test = (c: number): boolean => {
+      for (let m = this.cellStart[c]; m < this.cellStart[c + 1]; m++) {
+        const e = this.cellItems[m]
+        if (this.stamp[e] === q) continue
+        this.stamp[e] = q
+        if (visit(e)) return true
+      }
+      return false
+    }
+    const last = Math.max(i - c0, c1 - i, j - r0, r1 - j)
+    for (let r = first; r <= last; r++) {
+      if ((r - 1) * this.cell >= bound()) return
+      if (r === 0) { if (test(j * this.nx + i)) return; continue }
+      const jt = j - r, jb = j + r, il = Math.max(c0, i - r), ir = Math.min(c1, i + r)
+      if (jt >= r0) for (let k = il; k <= ir; k++) if (test(jt * this.nx + k)) return
+      if (jb <= r1) for (let k = il; k <= ir; k++) if (test(jb * this.nx + k)) return
+      const j0 = Math.max(r0, j - r + 1), j1 = Math.min(r1, j + r - 1)
+      if (i - r >= c0) for (let m = j0; m <= j1; m++) if (test(m * this.nx + i - r)) return
+      if (i + r <= c1) for (let m = j0; m <= j1; m++) if (test(m * this.nx + i + r)) return
+    }
+  }
+
+  // The same distance for a point off the grid, by searching every cell within maxR.
+  private edgeDistanceInBox(x: number, y: number, maxR: number): number {
     let best = maxR
     const c0 = this.cx(x - maxR), c1 = this.cx(x + maxR), r0 = this.cy(y - maxR), r1 = this.cy(y + maxR)
     const q = ++this.query
@@ -186,11 +297,26 @@ export class Region {
       if (!best || s.d < best.d) best = { ...s, i }
     }
     if (!best) return null
-    // Step in from the nearest edge point, further each try, until the point is inside and clear of every edge.
-    const ex = this.ex1[best.i] - this.ex0[best.i], ey = this.ey1[best.i] - this.ey0[best.i], L = Math.hypot(ex, ey) || 1
-    for (const k of [1, 1.5, 2, 4, 8, 16]) for (const side of [1, -1]) {
-      const px = best.x + (-ey / L) * side * inset * k, py = best.y + (ex / L) * side * inset * k
-      if (this.contains(px, py) && this.edgeDistance(px, py, inset) >= inset * 0.999) return [px, py]
+    const ok = (px: number, py: number) => this.contains(px, py) && this.edgeDistance(px, py, inset) >= inset * 0.999
+    // Step in from a point of an edge, further each try, until the point is inside and clear of every edge.
+    const stepIn = (i: number, bx: number, by: number): Vec | null => {
+      const ex = this.ex1[i] - this.ex0[i], ey = this.ey1[i] - this.ey0[i], L = Math.hypot(ex, ey) || 1
+      for (const k of [1, 1.5, 2, 4, 8, 16]) for (const side of [1, -1]) {
+        const px = bx + (-ey / L) * side * inset * k, py = by + (ex / L) * side * inset * k
+        if (ok(px, py)) return [px, py]
+      }
+      return null
+    }
+    const first = stepIn(best.i, best.x, best.y)
+    if (first) return first
+    // From the nearest point of the nearest edge that can fail, as at a corner, or on a line of text's baseline
+    // between two letters. Then the next nearest edges, from their nearest points and their middles.
+    const near = Array.from({ length: this.edgeCount }, (_, i) => i)
+      .map(i => ({ i, s: toSegment(x, y, this.ex0[i], this.ey0[i], this.ex1[i], this.ey1[i]) }))
+      .sort((a, b) => a.s.d - b.s.d).slice(0, 32)
+    for (const { i, s } of near) {
+      const p = stepIn(i, s.x, s.y) ?? stepIn(i, (this.ex0[i] + this.ex1[i]) / 2, (this.ey0[i] + this.ey1[i]) / 2)
+      if (p) return p
     }
     return null
   }

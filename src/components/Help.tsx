@@ -1,3 +1,4 @@
+import { touchFirst } from '../lib/touch'
 import { Modal } from './Modal'
 
 // The quick start card and the ? dialog with every shortcut.
@@ -6,11 +7,13 @@ export function QuickStart({ onClose }: { onClose: () => void }) {
   return <section className="quick-start glass" aria-labelledby="quick-start-title">
     <h2 id="quick-start-title">Quick start</h2>
     <ol>
-      <li><b>Grow:</b> press <kbd>Space</kbd> and watch veins grow from the root toward the attractors that fill the leaf. Try a preset on the Grow tab.</li>
-      <li><b>Shape:</b> pick a shape or import an SVG outline, and click with the Roots tool to add more roots.</li>
+      {touchFirst()
+        ? <li><b>Grow:</b> tap Grow and watch veins grow from the root toward the attractors that fill the leaf. Try a preset on the Grow tab.</li>
+        : <li><b>Grow:</b> press <kbd>Space</kbd> and watch veins grow from the root toward the attractors that fill the leaf. Try a preset on the Grow tab.</li>}
+      <li><b>Shape:</b> pick a shape or import an SVG outline, and {touchFirst() ? 'tap' : 'click'} with the Roots tool to add more roots.</li>
       <li><b>File:</b> export SVG or DXF at real size for Illustrator, plotters and lasers, or a PNG.</li>
     </ol>
-    <p>Hover over any control to see what it does.</p>
+    <p>{touchFirst() ? 'Tap a greyed-out control to see why it can’t be used yet.' : 'Hover over any control to see what it does.'}</p>
     <button type="button" className="primary" data-tip="Hide this guide. Reopen it from the ? button." onClick={onClose}>Got it</button>
   </section>
 }

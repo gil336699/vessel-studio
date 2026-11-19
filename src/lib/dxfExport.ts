@@ -3,7 +3,7 @@
 // CAM read polylines more reliably than splines). The shape, attractors and roots go on their own layers when the
 // view shows them. DXF has no line widths in R12, so the veins are centre lines; the SVG carries their widths.
 // DXF's y axis points up, so y is flipped.
-import { flattenChain } from '../veins/network'
+import { flattenChain, flattenCurves } from '../veins/network'
 import { num } from './format'
 import type { Scene } from './scene'
 import type { Settings } from './settings'
@@ -52,7 +52,10 @@ export function designDxf(scene: Scene, s: Settings): string {
   }
   const circle = (x: number, y: number, r: number, layer: string) => { pair(0, 'CIRCLE'); pair(8, layer); pair(10, X(x)); pair(20, Y(y)); pair(30, 0); pair(40, R(r)) }
   if (scene.rings) for (const ring of scene.rings) polyline(ring, true, LAYER_SHAPE)
-  if (scene.veins) for (const chain of scene.veins) polyline(s.smooth ? flattenChain(chain.points, CURVE_POINTS) : chain.points, false, LAYER_VEINS)
+  if (scene.veins) for (const chain of scene.veins) {
+    const p = !s.smooth ? chain.points : chain.curves ? flattenCurves(chain.points[0], chain.curves, CURVE_POINTS) : flattenChain(chain.points, CURVE_POINTS)
+    polyline(p, false, LAYER_VEINS)
+  }
   if (scene.attractors) {
     const r = attractorRadius(s.segment), a = scene.attractors
     for (let i = 0; i < a.length; i += 2) circle(a[i], a[i + 1], r, LAYER_ATTRACTORS)

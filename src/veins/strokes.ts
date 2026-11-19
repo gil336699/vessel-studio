@@ -3,7 +3,7 @@
 // no room inside for veins. So each pair of nested outlines that stay the same small distance apart all the way
 // round is read as the one line it came from: a boundary keeps its inner edge and a hole keeps its outer edge,
 // so veins stay clear of the drawn line on both sides. Gil's TestingShapes (2026-11-18) are drawn this way.
-import { boxesOverlap, boxOf, signedArea, toSegment, type Box, type Ring } from './geometry'
+import { boxesOverlap, boxOf, pointInRing, signedArea, toSegment, type Box, type Ring } from './geometry'
 
 export type Merged = { rings: Ring[]; pairs: number; width: number }
 
@@ -16,28 +16,31 @@ const EVEN = 2
 // when they are too small for the share above: a 10 mm circle drawn with a 1 mm stroke is still a line.
 const SAME = 0.35
 
-// Up to n points spread evenly round a ring.
+// n points spread evenly round a ring by length, each in the middle of its stretch, so a long straight side drawn
+// with two points counts as much as a curve drawn with hundreds.
 function samples(ring: Ring, n: number): Ring {
-  const step = Math.max(1, Math.floor(ring.length / n))
+  const m = ring.length
+  if (m < 3) return ring.slice()
+  const lengths = new Float64Array(m)
+  let total = 0
+  for (let i = 0; i < m; i++) { const a = ring[i], b = ring[(i + 1) % m]; lengths[i] = Math.hypot(b[0] - a[0], b[1] - a[1]); total += lengths[i] }
+  if (!(total > 0)) return [ring[0]]
   const out: Ring = []
-  for (let i = 0; i < ring.length && out.length < n; i += step) out.push(ring[i])
-  return out
-}
-
-function inRing(ring: Ring, x: number, y: number): boolean {
-  let inside = false
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const [xi, yi] = ring[i], [xj, yj] = ring[j]
-    if ((yi > y) !== (yj > y) && x < xi + ((y - yi) * (xj - xi)) / (yj - yi)) inside = !inside
+  let i = 0, walked = 0
+  for (let k = 0; k < n; k++) {
+    const target = ((k + 0.5) / n) * total
+    while (i < m - 1 && walked + lengths[i] < target) { walked += lengths[i]; i++ }
+    const a = ring[i], b = ring[(i + 1) % m], t = lengths[i] > 0 ? Math.min(1, (target - walked) / lengths[i]) : 0
+    out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t])
   }
-  return inside
+  return out
 }
 
 // Whether ring a lies inside ring b, by most of a's points. One point alone can sit exactly on b, as the two
 // edges of an outlined stroke often start at the same point.
 export function ringInside(a: Ring, b: Ring): boolean {
   const pts = samples(a, 16)
-  return pts.filter(([x, y]) => inRing(b, x, y)).length * 2 > pts.length
+  return pts.filter(([x, y]) => pointInRing(b, x, y)).length * 2 > pts.length
 }
 
 // Distances from points spread round ring a to ring b's outline.

@@ -35,7 +35,7 @@ const nums = (v: unknown, what: string): number[] => {
 }
 // Coordinates are millimetres on the sheet; anything far beyond the largest sheet (3 m) is damage, and would slow
 // growth to a crawl.
-const FAR = 100_000
+export const FAR = 100_000
 const near = (v: number[], what: string): number[] => {
   if (v.some(x => Math.abs(x) > FAR)) throw new ProjectError(`This project file is damaged: its ${what} lie far outside any sheet.`)
   return v

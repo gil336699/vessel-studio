@@ -30,7 +30,7 @@ export function placeAttractors(region: Region, count: number, placement: Placem
   if (n === 0 || region.empty || region.area <= 0) return { points: new Float64Array(0), short: n > 0 }
   const rng = new Rng(seed)
   const fits = clearance > 0
-    ? (x: number, y: number) => region.contains(x, y) && region.edgeDistance(x, y, clearance) >= clearance
+    ? (x: number, y: number) => region.contains(x, y) && !region.nearEdge(x, y, clearance)
     : (x: number, y: number) => region.contains(x, y)
   if (placement === 'grid') return gridPoints(region, n, rng, fits)
   const [x0, y0, x1, y1] = region.box
@@ -60,13 +60,15 @@ export function placeAttractors(region: Region, count: number, placement: Placem
     }
     return Math.sqrt(best)
   }
-  // One random point inside the shape that passes the density test, or null after many misses.
-  const sample = (): [number, number] | null => {
+  // One random point inside the shape that passes the density test, with its density, or null after many
+  // misses. The density is worked out once here, as it's the slow part.
+  const sample = (): [number, number, number] | null => {
     for (let tries = 0; tries < 400; tries++) {
       const x = x0 + rng.next() * w, y = y0 + rng.next() * h
       if (!fits(x, y)) continue
-      if (density && rng.next() >= density(x, y)) continue
-      return [x, y]
+      const d = density ? density(x, y) : 1
+      if (density && rng.next() >= d) continue
+      return [x, y, d]
     }
     return null
   }
@@ -74,13 +76,13 @@ export function placeAttractors(region: Region, count: number, placement: Placem
   // A point whose samples all missed the shape is tried again; only many misses in a row mean there's no room
   // left, as in a very pale picture.
   for (let misses = 0; xs.length < n && misses < 60;) {
-    let best: [number, number] | null = null, score = -1
+    let best: [number, number, number] | null = null, score = -1
     for (let c = 0; c < k; c++) {
       const q = sample()
       if (!q) continue
       if (k === 1) { best = q; break }
       // Distances are measured in local spacing units, so denser areas stay denser.
-      const s = nearest(q[0], q[1]) * (density ? Math.sqrt(density(q[0], q[1])) : 1)
+      const s = nearest(q[0], q[1]) * (density ? Math.sqrt(q[2]) : 1)
       if (s > score) { score = s; best = q }
     }
     if (!best) { misses++; continue }

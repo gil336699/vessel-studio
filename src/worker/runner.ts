@@ -123,9 +123,11 @@ export function createRunner(post: (message: FromRunner, transfer: Transferable[
       case 'load': {
         if (run) { clearTimeout(run.timer); run = null }
         const { load } = message
-        gen = load.gen
+        // Built before it's taken on, so a load that fails leaves the last engine and its frames as they were.
         const region = new Region(load.rings)
-        engine = new Engine(region.empty ? null : region, load.attractors, load.params, load.state ? { state: load.state } : { roots: load.roots })
+        const next = new Engine(region.empty ? null : region, load.attractors, load.params, load.state ? { state: load.state } : { roots: load.roots })
+        gen = load.gen
+        engine = next
         // The page already has this state; the first frame it needs is the next change.
         sentPoints = engine.points; sentJoins = engine.joins.length / 2; used = []
         dirty = false; inFlight = false

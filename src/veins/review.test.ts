@@ -50,6 +50,16 @@ describe('obstacles', () => {
     for (let v = 0; v < e.points; v++) expect(e.x[v]).toBeLessThan(50)
   })
 
+  it('says growth stalled, not out of reach, when the only attractors left are just across a thin wall', () => {
+    // A 0.2 mm slot from the top almost to the bottom; the root just left of it, three attractors just right of it,
+    // within the kill distance but out of sight. There's no attraction limit, so "out of reach" would be wrong advice.
+    const region = new Region([rectRing(0, 0, 100, 100), rectRing(50, 0.5, 50.2, 99.5)])
+    const e = new Engine(region, Float64Array.from([50.8, 49, 50.8, 50, 50.8, 51]), { ...params, topology: 'open', kill: 2, attraction: 0, leafSteps: 0 }, { roots: [[49.5, 50]] })
+    for (let i = 0; i < 5000 && e.stepOnce(); i++) { /* grow */ }
+    expect(e.done).toBe('stalled')
+    expect(e.live).toBe(3)
+  })
+
   it('counts a hole’s area against the shape, so a grid fills a ring or an inverted shape', () => {
     const ring = new Region(presetRings('ring', 200, 200, 0))
     const outer = Math.PI * 100 * 100, inner = Math.PI * 36 * 36

@@ -64,6 +64,15 @@ describe('outlines drawn as outlined strokes', () => {
     expect(mergeStrokeBands([outer, dented]).pairs).toBe(0)
   })
 
+  it('judges a band by its length all the way round, not by where the points are', () => {
+    // A wavy top drawn with 401 points and three straight sides with two corners: the inner outline is 1 mm in along
+    // the top and the sides but 24 mm up from the bottom, so it's a real shape, not a stroke.
+    const top = (dy: number, x0: number, x1: number): Ring => Array.from({ length: 401 }, (_, i): [number, number] => { const x = x0 + ((x1 - x0) * i) / 400; return [x, dy + 0.6 * Math.sin(x * 2)] })
+    const outer: Ring = [...top(0, 0, 100), [100, 100], [0, 100]]
+    const inner: Ring = [...top(1, 1, 99), [99, 76], [1, 76]]
+    expect(mergeStrokeBands([outer, inner]).pairs).toBe(0)
+  })
+
   it('reads a small hole drawn with the same stroke as a line too, though it is too small to tell on its own', () => {
     // A 200 mm disc and a 10 mm hole, both drawn with a 0.8 mm stroke centred on the line.
     const w = 0.8

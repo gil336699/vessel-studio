@@ -10,13 +10,17 @@ export function signedArea(ring: Ring): number {
   return a / 2
 }
 
-export function ringLength(ring: Ring): number {
-  let s = 0
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) s += Math.hypot(ring[i][0] - ring[j][0], ring[i][1] - ring[j][1])
-  return s
-}
-
 export type Box = [number, number, number, number] // x0, y0, x1, y1
+
+// Even-odd inside test against one ring.
+export function pointInRing(ring: Ring, x: number, y: number): boolean {
+  let inside = false
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i], [xj, yj] = ring[j]
+    if ((yi > y) !== (yj > y) && x < xi + ((y - yi) * (xj - xi)) / (yj - yi)) inside = !inside
+  }
+  return inside
+}
 
 export const boxesOverlap = (a: Box, b: Box): boolean => a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3]
 

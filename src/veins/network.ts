@@ -2,6 +2,7 @@
 // and the numbers the measurements panel shows. Plain functions of the points, so the page, the exports and
 // the tests all agree.
 import type { Vec } from './geometry'
+import type { Region } from './region'
 
 export type WidthRule = 'murray' | 'even'
 export type WidthSettings = { rule: WidthRule; tip: number; max: number; exponent: number }
@@ -32,7 +33,8 @@ export function veinWidths(parent: ArrayLike<number>, n: number, w: WidthSetting
 
 // A vein between forks: its points and its width. A chain's width never changes along it, because a point
 // with one child feeds exactly the ends its child does.
-export type Chain = { points: Vec[]; width: number; join?: boolean }
+// curves: the smooth curve through the points, one cubic a segment, when worked out for an export (safeCurves).
+export type Chain = { points: Vec[]; width: number; join?: boolean; curves?: Cubic[] }
 
 export function chains(x: ArrayLike<number>, y: ArrayLike<number>, parent: ArrayLike<number>, joins: ArrayLike<number>, n: number, widths: Float64Array): Chain[] {
   const childStart = new Int32Array(n + 1)
@@ -118,9 +120,14 @@ export function smoothChain(p: Vec[]): Cubic[] {
 // A chain's smooth curve as points, `per` to a segment, for DXF and outlines.
 export function flattenChain(p: Vec[], per: number): Vec[] {
   if (p.length < 3 || per <= 1) return p.slice()
-  const out: Vec[] = [p[0]]
-  let [px, py] = p[0]
-  for (const [c1x, c1y, c2x, c2y, x, y] of smoothChain(p)) {
+  return flattenCurves(p[0], smoothChain(p), per)
+}
+
+// Curves from `start` as points, `per` to a curve.
+export function flattenCurves(start: Vec, curves: Cubic[], per: number): Vec[] {
+  const out: Vec[] = [start]
+  let [px, py] = start
+  for (const [c1x, c1y, c2x, c2y, x, y] of curves) {
     for (let k = 1; k <= per; k++) {
       const t = k / per, u = 1 - t
       out.push([u * u * u * px + 3 * u * u * t * c1x + 3 * u * t * t * c2x + t * t * t * x, u * u * u * py + 3 * u * u * t * c1y + 3 * u * t * t * c2y + t * t * t * y])
@@ -128,4 +135,31 @@ export function flattenChain(p: Vec[], per: number): Vec[] {
     px = x; py = y
   }
   return out
+}
+
+// A straight segment as a cubic, its handles a third of the way along.
+const straight = (a: Vec, b: Vec): Cubic => [a[0] + (b[0] - a[0]) / 3, a[1] + (b[1] - a[1]) / 3, a[0] + ((b[0] - a[0]) * 2) / 3, a[1] + ((b[1] - a[1]) * 2) / 3, b[0], b[1]]
+// Each curve is checked as this many chords, kept this much (mm) further from the edges than asked: a chord and
+// its curve are under 0.001 mm apart at a segment's length, so the curve itself keeps the promise.
+const CHORDS = 16
+const MARGIN = 0.002
+
+// Smooth curves through a chain for an export, that keep the engine's promises: every curve stays inside the shape
+// and at least the edge clearance from its edges. Catmull–Rom curves can swing a little wide of a sharp turn, such
+// as a loop join, by up to about a tenth of a millimetre; a curve that would leave the shape or come nearer an edge
+// than the clearance is drawn straight there instead, as the engine grew it.
+export function safeCurves(p: Vec[], region: Region, clearance: number): Cubic[] {
+  const r = Math.max(0, clearance) + MARGIN
+  return smoothChain(p).map((c, i) => {
+    const [ax, ay] = p[i]
+    let px = ax, py = ay
+    for (let k = 1; k <= CHORDS; k++) {
+      const t = k / CHORDS, u = 1 - t
+      const qx = u * u * u * ax + 3 * u * u * t * c[0] + 3 * u * t * t * c[2] + t * t * t * c[4]
+      const qy = u * u * u * ay + 3 * u * u * t * c[1] + 3 * u * t * t * c[3] + t * t * t * c[5]
+      if (!region.clearOf(px, py, qx, qy, r)) return straight(p[i], p[i + 1])
+      px = qx; py = qy
+    }
+    return c
+  })
 }

@@ -31,13 +31,17 @@ const ROOTS: { id: RootPlacement; label: string; tip: string }[] = [
   { id: 'edge', label: 'Edge', tip: 'Roots spaced round the outline, growing inward.' },
 ]
 
+// Whether the sheet is no longer the imported page's size, as after a typed width.
+const resized = (s: Settings, imported: Imported) => Math.abs(s.width - imported.width) > 1e-6 || Math.abs(s.height - imported.height) > 1e-6
+
 const ASSUMED = {
   css: 'The file doesn’t say how big it is, so it was read at 96 units per inch, the web standard. Check the width and height.',
   illustrator: 'The file doesn’t say how big it is. It looks like it came from Illustrator, so it was read at 72 points per inch, as Illustrator writes it.',
 }
 
-export const ShapePanel = memo(function ShapePanel({ s, imported, rootCount, change, onImport, onRoots }: {
+export const ShapePanel = memo(function ShapePanel({ s, imported, rootCount, change, onImport, onRoots, importNotes }: {
   s: Settings; imported: Imported | null; rootCount: number; change: Change; onImport: () => void; onRoots: (placement: RootPlacement) => void
+  importNotes: string[] | null
 }) {
   const preset = matchPreset(s.width, s.height, s.units, s.dpi)
   const [pw, ph] = pixelSize(s.width, s.height, s.dpi)
@@ -70,7 +74,12 @@ export const ShapePanel = memo(function ShapePanel({ s, imported, rootCount, cha
       </div>
       <NumberField label="Pixels per inch" value={s.dpi} min={LIMITS.dpi[0]} max={LIMITS.dpi[1]} suffix="ppi"
         tip={`Resolution of PNG exports and of pixel units. This sheet is ${pw.toLocaleString()} × ${ph.toLocaleString()} px at ${s.dpi} ppi.`}
-        onChange={dpi => change({ dpi: Math.round(dpi) }, 'dpi')} />
+        onChange={value => {
+          const dpi = Math.round(value)
+          // A sheet set in pixels keeps its pixels, as a 1080 px post should: its size in millimetres follows.
+          if (s.units === 'px' && dpi !== s.dpi) change({ dpi, width: (s.width * s.dpi) / dpi, height: (s.height * s.dpi) / dpi }, 'dpi')
+          else change({ dpi }, 'dpi')
+        }} />
     </Section>
 
     <Section title="Shape">
@@ -79,17 +88,20 @@ export const ShapePanel = memo(function ShapePanel({ s, imported, rootCount, cha
         unavailable={s.shape === 'imported' && 'An imported shape keeps its own position on its page.'}
         tip="Space between the sheet’s edge and the shape." onChange={margin => change({ margin }, 'margin')} />
       <LengthField label="Edge clearance" mm={s.clearance} min={0} max={clearanceMax(s)} units={s.units} dpi={s.dpi}
-        tip="How far vein centre lines stay inside the shape’s edges and holes. 0 lets veins reach the outline, as in a real leaf. For a clear gap to a drawn outline or a cut line, use more than half the widest vein near the edge. Changing it places the attractors again."
+        tip="How far vein centre lines stay inside the edges and holes; 0 lets veins reach the outline."
         onChange={clearance => change({ clearance }, 'clearance')} />
+      {s.clearance > 0 && <p className="hint">Measured to each vein’s centre line: for a clear gap, keep it above half the widest vein near the edge.</p>}
       <SwitchField label="Grow outside the shape" checked={s.invert}
         tip="Grow in the sheet around the shape instead, so veins wrap round it as an obstacle." onChange={invert => change({ invert }, 'invert')} />
-      <div className="button-row">
-        <Button tip="Use the closed shapes of an SVG, such as an outline from Illustrator, as the shape veins grow inside. Shapes inside shapes are holes, and outlined strokes are read as the lines they were. The sheet becomes the file’s page." onClick={onImport}>
+      <div className="button-row single">
+        <Button tip="Use an SVG’s closed shapes as the shape: shapes inside shapes are holes, and the sheet becomes its page." onClick={onImport}>
           <Icon name="import" />Import SVG shape…</Button>
       </div>
       {s.shape === 'imported' && imported && <p className="hint">
-        {imported.name}: {imported.rings.length} {imported.rings.length === 1 ? 'outline' : 'outlines'}, page {formatLength(imported.width, s.units, s.dpi)} × {formatLength(imported.height, s.units, s.dpi)}.
-        {imported.sized !== 'file' ? ` ${ASSUMED[imported.sized]}` : ''}
+        {imported.name}: {imported.rings.length} {imported.rings.length === 1 ? 'outline' : 'outlines'}, page {formatLength(imported.width, s.units, s.dpi)} × {formatLength(imported.height, s.units, s.dpi)}
+        {resized(s, imported) ? ', fitted to the sheet with its proportions kept.' : '.'}
+        {imported.sized !== 'file' && !resized(s, imported) ? ` ${ASSUMED[imported.sized]}` : ''}
+        {importNotes?.length ? ` ${importNotes.join(' ')}` : ''}
       </p>}
     </Section>
 
