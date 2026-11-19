@@ -12,6 +12,10 @@ It rebuilds Gil's older space colonization pages (Vessel Lab, Basic, BioVessel P
 
 **Use it online:** https://gil336699.github.io/vessel-studio/
 
+![Vessel Studio in use: the Leaf preset grows open veins from the base of a leaf, main veins first; Leaf with loops joins them into a fine net; an Illustrator SVG of the word "Arbore" is dropped in, and every letter grows from its own root; Gil's shape, a rounded triangle with a window drawn as outlined strokes, is dropped in and its strokes are read as lines; Edge clearance is set to 12 pt and the veins grow clear of the drawn lines, seen close up; and the design is exported as an SVG at real size.](docs/demo.gif)
+
+[Watch the demo as a video](https://github.com/gil336699/vessel-studio/releases/download/v1.4.0/vessel-studio-demo.mp4) (MP4, 1920 × 1080, 28 seconds).
+
 ![The six presets, grown by the app's engine on A4: Leaf, open veins from the base with a midrib; Leaf with loops, a fine closed net; Tree, a trunk branching into its crown; Arterial, long smooth vessels from the centre; Neural, fine wandering branches; Capillary, a dense bed of small loops.](docs/presets.png)
 
 ## Run
