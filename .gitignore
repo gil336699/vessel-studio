@@ -1,0 +1,22 @@
+node_modules/
+dist/
+coverage/
+.DS_Store
+*.log
+.env
+.env.*
+.claude/
+
+# Files people make with the app
+*.vein.json
+!test-fixtures/*.vein.json
+*.dxf
+*.png
+!public/*.png
+!docs/*.png
+*.svg
+!public/*.svg
+!test-fixtures/*.svg
+
+# Local test files, QA scripts and reference papers (kept out of git)
+local/
