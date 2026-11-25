@@ -319,6 +319,8 @@ details[open] > summary::after { transform: rotate(45deg); }
 .floating-bar button:hover:not([aria-disabled='true']) { background: var(--well); }
 .floating-bar button[aria-pressed='true'] { background: var(--selected); box-shadow: var(--selected-shadow); font-weight: 600; }
 .floating-bar .icon-button { width: 30px; min-width: 30px; padding: 0; }
+/* The colour of a system, beside its name in the bar. */
+.system-dot { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 50%; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18); vertical-align: -1px; }
 .zoom-readout { min-width: 58px; font-variant-numeric: tabular-nums; }
 .bar-divider { width: 1px; align-self: stretch; margin: 6px 4px; background: var(--separator); }
 .view-caption { display: flex; flex-wrap: wrap; gap: 6px; }

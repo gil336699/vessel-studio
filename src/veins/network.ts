@@ -2,16 +2,17 @@
 // and the numbers the measurements panel shows. Plain functions of the points, so the page, the exports and
 // the tests all agree.
 import type { Vec } from './geometry'
-import type { Region } from './region'
+import { segmentDistance, type Region } from './region'
 
 export type WidthRule = 'murray' | 'even'
 export type WidthSettings = { rule: WidthRule; tip: number; max: number; exponent: number }
 
 // How many vein ends each point feeds (the pipe model). A point is only added after its parent, so walking the
-// indices downward visits every child before its parent.
-export function feeds(parent: ArrayLike<number>, n: number): Float64Array {
+// indices downward visits every child before its parent. Points `keep` leaves out (0) feed nothing.
+export function feeds(parent: ArrayLike<number>, n: number, keep?: Uint8Array | null): Float64Array {
   const q = new Float64Array(n)
   for (let v = n - 1; v >= 0; v--) {
+    if (keep && !keep[v]) continue
     if (q[v] === 0) q[v] = 1
     const p = parent[v]
     if (p >= 0) q[p] += q[v]
@@ -22,10 +23,10 @@ export function feeds(parent: ArrayLike<number>, n: number): Float64Array {
 // Width (mm) of the vein from each point's parent to the point. Murray's law: at each fork the parent's
 // width^n is the sum of its children's, starting from the tip width at every end, so a vein feeding m ends is
 // tip × m^(1/n) wide. Even gives every vein the tip width, for pen plotters.
-export function veinWidths(parent: ArrayLike<number>, n: number, w: WidthSettings): Float64Array {
+export function veinWidths(parent: ArrayLike<number>, n: number, w: WidthSettings, keep?: Uint8Array | null): Float64Array {
   const out = new Float64Array(n)
   if (w.rule === 'even') return out.fill(w.tip)
-  const q = feeds(parent, n)
+  const q = feeds(parent, n, keep)
   const inv = 1 / Math.max(1, w.exponent)
   for (let v = 0; v < n; v++) out[v] = Math.min(Math.max(w.tip, w.max), w.tip * q[v] ** inv)
   return out
@@ -41,18 +42,44 @@ export function widestVein(parent: ArrayLike<number>, n: number, w: WidthSetting
   return widest
 }
 
+// Join: the network without its dead ends. A vein end that never met the other tree carries no flow, so it is cut
+// back, again and again, until every end left is a join between the trees. Roots stay. Returns 1 for each point kept.
+export function trimDeadEnds(parent: ArrayLike<number>, n: number, links: ArrayLike<number>): Uint8Array {
+  const keep = new Uint8Array(n).fill(1)
+  const kids = new Int32Array(n)
+  for (let v = 0; v < n; v++) if (parent[v] >= 0) kids[parent[v]]++
+  const linked = new Uint8Array(n)
+  for (let i = 0; i < links.length; i++) linked[links[i]] = 1
+  const stack: number[] = []
+  for (let v = n - 1; v >= 0; v--) if (kids[v] === 0 && !linked[v] && parent[v] >= 0) stack.push(v)
+  while (stack.length) {
+    const v = stack.pop()!
+    keep[v] = 0
+    const p = parent[v]
+    kids[p]--
+    if (kids[p] === 0 && !linked[p] && parent[p] >= 0) stack.push(p)
+  }
+  return keep
+}
+
 // A vein between forks: its points and its width. A chain's width never changes along it, because a point
 // with one child feeds exactly the ends its child does.
+// system: the system it belongs to, with two or three (0 is A); link: a join between Join's two trees.
 // curves: the smooth curve through the points, one cubic a segment, when worked out for an export (safeCurves).
-export type Chain = { points: Vec[]; width: number; join?: boolean; curves?: Cubic[] }
+export type Chain = { points: Vec[]; width: number; join?: boolean; link?: boolean; system?: number; curves?: Cubic[] }
 
-export function chains(x: ArrayLike<number>, y: ArrayLike<number>, parent: ArrayLike<number>, joins: ArrayLike<number>, n: number, widths: Float64Array): Chain[] {
+// The veins as chains. With two or three systems, `sys` gives each point's system and `links` Join's joins between
+// the trees; `keep` leaves out the points it marks 0, as Trim dead ends does.
+export function chains(x: ArrayLike<number>, y: ArrayLike<number>, parent: ArrayLike<number>, joins: ArrayLike<number>, n: number, widths: Float64Array,
+  opts: { sys?: ArrayLike<number> | null; links?: ArrayLike<number> | null; keep?: Uint8Array | null } = {}): Chain[] {
+  const { sys, links, keep } = opts
+  const kept = (v: number) => parent[v] >= 0 && (!keep || keep[v] === 1)
   const childStart = new Int32Array(n + 1)
-  for (let v = 0; v < n; v++) if (parent[v] >= 0) childStart[parent[v] + 1]++
+  for (let v = 0; v < n; v++) if (kept(v)) childStart[parent[v] + 1]++
   for (let v = 0; v < n; v++) childStart[v + 1] += childStart[v]
   const kids = new Int32Array(childStart[n])
   const fill = childStart.slice()
-  for (let v = 0; v < n; v++) if (parent[v] >= 0) kids[fill[parent[v]]++] = v
+  for (let v = 0; v < n; v++) if (kept(v)) kids[fill[parent[v]]++] = v
   const childCount = (v: number) => childStart[v + 1] - childStart[v]
   // A loop join carries on the vein that arrived, when that vein ended there and has only that one join.
   const joinCount = new Int32Array(n)
@@ -75,16 +102,111 @@ export function chains(x: ArrayLike<number>, y: ArrayLike<number>, parent: Array
       while (childCount(v) === 1) { v = kids[childStart[v]]; pts.push([x[v], y[v]]) }
       const end = onward.get(v)
       if (childCount(v) === 0 && end !== undefined) pts.push([x[end], y[end]])
-      out.push({ points: pts, width: widths[first] })
+      out.push(sys ? { points: pts, width: widths[first], system: sys[first] } : { points: pts, width: widths[first] })
       for (let k = childStart[v]; k < childStart[v + 1]; k++) stack.push([v, kids[k]])
     }
   }
   for (let i = 0; i + 1 < joins.length; i += 2) {
     if (usedJoin.has(i)) continue
     const a = joins[i], b = joins[i + 1]
-    out.push({ points: [[x[a], y[a]], [x[b], y[b]]], width: Math.min(widths[a] || Infinity, widths[b] || Infinity), join: true })
+    const chain: Chain = { points: [[x[a], y[a]], [x[b], y[b]]], width: Math.min(widths[a] || Infinity, widths[b] || Infinity), join: true }
+    if (sys) chain.system = sys[a]
+    out.push(chain)
+  }
+  // A join between the trees is as wide as the narrower end it joins.
+  if (links) for (let i = 0; i + 1 < links.length; i += 2) {
+    const a = links[i], b = links[i + 1]
+    out.push({ points: [[x[a], y[a]], [x[b], y[b]]], width: Math.min(widths[a] || Infinity, widths[b] || Infinity), link: true })
   }
   return out
+}
+
+// Pairs of segments from different systems whose centre lines come within `reach`: [a, b, distance], where a segment
+// is named by the point it grows to. Segments are found by their middles in a grid, cells as wide as the reach.
+function crossPairs(x: ArrayLike<number>, y: ArrayLike<number>, parent: ArrayLike<number>, sys: ArrayLike<number>, n: number,
+  reach: (longest: number) => number): [number, number, number][] {
+  const segs: number[] = []
+  let longest = 0
+  for (let v = 0; v < n; v++) if (parent[v] >= 0) {
+    segs.push(v)
+    const p = parent[v]
+    longest = Math.max(longest, Math.hypot(x[v] - x[p], y[v] - y[p]))
+  }
+  const R = reach(longest)
+  const pairs: [number, number, number][] = []
+  if (!(R > 0)) return pairs
+  const key = (i: number, j: number) => (i + 32768) * 65536 + (j + 32768)
+  const grid = new Map<number, number[]>()
+  const cellOf = (v: number): [number, number] => { const p = parent[v]; return [Math.floor((x[v] + x[p]) / 2 / R), Math.floor((y[v] + y[p]) / 2 / R)] }
+  for (const v of segs) {
+    const k = key(...cellOf(v))
+    const list = grid.get(k)
+    if (list) list.push(v); else grid.set(k, [v])
+  }
+  for (const a of segs) {
+    const pa = parent[a], [ci, cj] = cellOf(a)
+    for (let i = ci - 1; i <= ci + 1; i++) for (let j = cj - 1; j <= cj + 1; j++) {
+      for (const b of grid.get(key(i, j)) ?? []) {
+        if (sys[b] === sys[a] || b < a) continue
+        const pb = parent[b]
+        const d = segmentDistance(x[pa], y[pa], x[a], y[a], x[pb], y[pb], x[b], y[b])
+        if (d <= R) pairs.push([a, b, d])
+      }
+    }
+  }
+  return pairs
+}
+
+const widestOf = (widths: ArrayLike<number>, n: number) => { let w = 0; for (let v = 0; v < n; v++) w = Math.max(w, widths[v]); return w }
+
+// The closest the veins of two different systems come, edge to edge, mm, with these widths; Infinity when no two come
+// near, and below 0 where they overlap.
+export function systemGap(x: ArrayLike<number>, y: ArrayLike<number>, parent: ArrayLike<number>, sys: ArrayLike<number>, n: number, widths: ArrayLike<number>): number {
+  const widest = widestOf(widths, n)
+  let closest = Infinity
+  for (const [a, b, d] of crossPairs(x, y, parent, sys, n, longest => widest + longest + 1)) closest = Math.min(closest, d - widths[a] / 2 - widths[b] / 2)
+  return closest
+}
+
+// Interweave: Murray widths keep growing as a tree gains ends, after a vein has passed another system's vein, so the
+// widths are capped where two systems pass close: each end of a segment may be at most half the room between it and
+// the nearest segment of another system, after the gap. The cap spreads along the vein, so a vein narrows over a few
+// segments rather than at once. A segment is drawn as wide as the point it grows to, so its width is that point's.
+// Returns the new widths, how many points were narrowed, and the closest gap left between the systems' veins.
+export function separateWidths(x: ArrayLike<number>, y: ArrayLike<number>, parent: ArrayLike<number>, sys: ArrayLike<number>, n: number,
+  widths: Float64Array, gap: number, taper = 0.4): { widths: Float64Array; narrowed: number; closest: number } {
+  const widest = widestOf(widths, n) / 2
+  const cap = new Float64Array(n).fill(Infinity)
+  const pairs = crossPairs(x, y, parent, sys, n, longest => Math.max(0, gap) + 2 * widest + longest)
+  for (const [a, b, d] of pairs) {
+    const room = Math.max(0, (d - Math.max(0, gap)) / 2)
+    for (const v of [a, b]) if (room < cap[v]) cap[v] = room
+  }
+  // Spread each cap along the tree: a half-width can grow by at most `taper` mm a millimetre away from a cap.
+  const limit = Float64Array.from(cap)
+  for (let pass = 0; pass < 2; pass++) {
+    // Down the tree (parents come before children), then up.
+    for (let v = 0; v < n; v++) {
+      const p = parent[v]
+      if (p < 0) continue
+      limit[v] = Math.min(limit[v], limit[p] + taper * Math.hypot(x[v] - x[p], y[v] - y[p]))
+    }
+    for (let v = n - 1; v >= 0; v--) {
+      const p = parent[v]
+      if (p < 0) continue
+      limit[p] = Math.min(limit[p], limit[v] + taper * Math.hypot(x[v] - x[p], y[v] - y[p]))
+    }
+  }
+  let narrowed = 0
+  const out = new Float64Array(n)
+  for (let v = 0; v < n; v++) {
+    const r = Math.min(widths[v] / 2, limit[v])
+    if (r < widths[v] / 2 - 1e-9) narrowed++
+    out[v] = 2 * r
+  }
+  let closest = Infinity
+  for (const [a, b, d] of pairs) closest = Math.min(closest, d - out[a] / 2 - out[b] / 2)
+  return { widths: out, narrowed, closest }
 }
 
 export type NetworkStats = { points: number; ends: number; forks: number; loops: number; roots: number; length: number }

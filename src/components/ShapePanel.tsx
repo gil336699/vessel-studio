@@ -24,12 +24,16 @@ const shapes = (imported: boolean): Option<ShapeKind>[] => [
   { value: 'tree', label: 'Tree', tip: 'A round crown on a narrow trunk: a vein climbs the trunk and branches in the crown.' },
   { value: 'imported', label: 'Imported', tip: 'Grow inside the closed shapes of an SVG you imported, where shapes inside shapes are holes.', unavailable: !imported && 'Import an SVG first, with the button below.' },
 ]
-const ROOTS: { id: RootPlacement; label: string; tip: string }[] = [
-  { id: 'shape', label: 'Default', tip: 'Where this shape starts: a leaf’s base, an ellipse’s centre, the base of each part of a drawing.' },
-  { id: 'base', label: 'Base', tip: 'A root at the bottom middle of the shape, or of each part of a drawing.' },
-  { id: 'centre', label: 'Centre', tip: 'A root in the middle of the shape, or of each part of a drawing.' },
-  { id: 'row', label: 'Row', tip: 'A row of roots along the bottom of the shape or of each part, for parallel veins, as in grass.' },
-  { id: 'edge', label: 'Edge', tip: 'Roots spaced round the outline of the shape or of each part, growing inward.' },
+const ROOTS = (systems: number): { id: RootPlacement; label: string; tip: string }[] => [
+  { id: 'shape', label: 'Default', tip: systems > 1 ? 'Each system at its own end of the shape, or of each part of a drawing: A at the bottom or the left, B at the other end.'
+    : 'Where this shape starts: a leaf’s base, an ellipse’s centre, the base of each part of a drawing.' },
+  { id: 'base', label: 'Base', tip: systems > 1 ? 'A root for each system side by side at the bottom middle of the shape, or of each part of a drawing.' : 'A root at the bottom middle of the shape, or of each part of a drawing.' },
+  { id: 'centre', label: 'Centre', tip: systems > 1 ? 'A root for each system side by side in the middle of the shape, or of each part of a drawing.' : 'A root in the middle of the shape, or of each part of a drawing.' },
+  { id: 'row', label: 'Row', tip: `A row of roots along the bottom of the shape or of each part, for parallel veins, as in grass${systems > 1 ? ', the systems taking turns' : ''}.` },
+  { id: 'edge', label: 'Edge', tip: systems > 1 ? 'Six roots for each system round the outline of the shape, or shared round the parts of a drawing, taking turns, so the systems interweave as they grow inward.'
+    : 'Roots spaced round the outline of the shape or of each part, growing inward.' },
+  { id: 'ends', label: 'Ends', tip: systems > 1 ? 'A root at each end of the shape, or of each part, across its longer side: A at the bottom or the left, B at the other end.'
+    : 'A root at each end of the shape, or of each part, across its longer side, so veins grow in from both ends.' },
 ]
 
 // Whether the sheet is no longer the imported page's size, as after a typed width.
@@ -112,7 +116,7 @@ export const ShapePanel = memo(function ShapePanel({ s, imported, rootCount, cha
 
     <Section title="Roots" tip="Where veins start: each root grows its own network, and networks compete for space.">
       <div className="button-row roots-row">
-        {ROOTS.map(r => <Button key={r.id} tip={r.tip} onClick={() => onRoots(r.id)}>{r.label}</Button>)}
+        {ROOTS(s.systems).map(r => <Button key={r.id} tip={r.tip} onClick={() => onRoots(r.id)}>{r.label}</Button>)}
       </div>
       <p className="hint">{rootCount ? `${rootCount} ${rootCount === 1 ? 'root' : 'roots'}.` : 'No roots yet.'} {touchFirst()
         ? 'Use the Roots tool to add one where you tap, drag one to move it, or press and hold one to remove it.'

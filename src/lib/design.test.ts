@@ -13,7 +13,7 @@ function grown(d: Design, steps: number): Design {
   const e = new Engine(regionOf(d.settings, d.imported), d.attractors, growthParams(d.settings), { roots: d.roots })
   for (let i = 0; i < steps; i++) e.stepOnce()
   const s = e.snapshot()
-  return { ...d, growth: { step: s.step, rng: s.rng, idle: s.idle ?? 0, done: s.done, x: Float64Array.from(s.x), y: Float64Array.from(s.y), parent: Int32Array.from(s.parent), joins: Int32Array.from(s.joins), used: Uint8Array.from(s.used) } }
+  return { ...d, growth: { step: s.step, rng: s.rng, idle: s.idle ?? 0, done: s.done, x: Float64Array.from(s.x), y: Float64Array.from(s.y), parent: Int32Array.from(s.parent), sys: Int32Array.from(s.sys ?? []), joins: Int32Array.from(s.joins), links: Int32Array.from(s.links ?? []), used: Uint8Array.from(s.used) } }
 }
 
 const square = (x0: number, y0: number, x1: number, y1: number): Ring => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]

@@ -2,26 +2,30 @@
 // growth so far. Everything here is plain data, so it can go into a project file, the worker and undo.
 import { placeAttractors, type DensityMap } from '../veins/attractors'
 import { boxOf, clipRingToBox, hasArea, signedArea, type Box } from '../veins/geometry'
-import type { EngineState } from '../veins/engine'
+import type { EngineState, Root } from '../veins/engine'
 import type { Ring, Vec } from '../veins/geometry'
 import { Rng } from '../veins/random'
 import { partAt, partTest, Region } from '../veins/region'
 import { ringDepths } from '../veins/strokes'
 import { defaultRoots, invertRings, presetRings } from '../veins/shapes'
 import { fitPicture, type PictureData } from './picture'
-import { sanitizeSettings, type Settings } from './settings'
+import { interweaving, sanitizeSettings, type Settings } from './settings'
 import type { SizedBy } from './svgImport'
 
 // An outline read from an SVG, in millimetres on its file's page, which becomes the sheet.
 export type Imported = { name: string; sized: SizedBy; width: number; height: number; rings: Ring[] }
 
-// The veins grown so far, exactly as the engine holds them (see veins/engine.ts, EngineState).
-export type Growth = { step: number; rng: number; idle: number; done: EngineState['done']; x: Float64Array; y: Float64Array; parent: Int32Array; joins: Int32Array; used: Uint8Array }
+// The veins grown so far, exactly as the engine holds them (see veins/engine.ts, EngineState). sys: each point's
+// system, all 0 with one; links: Join's joins between its two trees.
+export type Growth = {
+  step: number; rng: number; idle: number; done: EngineState['done']
+  x: Float64Array; y: Float64Array; parent: Int32Array; sys: Int32Array; joins: Int32Array; links: Int32Array; used: Uint8Array
+}
 
 export type Design = {
   settings: Settings
   imported: Imported | null
-  roots: Vec[] // where growth starts; Reset goes back to these
+  roots: Root[] // where growth starts, and the system each starts; Reset goes back to these
   // How the roots were placed, so they follow a changed sheet, margin or clearance as placed afresh; missing for
   // roots placed by hand, which are moved in only as far as needed.
   rootsBy?: RootPlacement
@@ -31,19 +35,31 @@ export type Design = {
   growth: Growth
 }
 
+// A root at a point, starting system t. System A's roots are plain points, as roots were before systems.
+export const rootAt = (p: Vec, t = 0): Root => (t > 0 ? [p[0], p[1], t] : [p[0], p[1]])
+export const rootSystem = (r: Root): number => r[2] ?? 0
+// A root's system as one of `systems`: a root of a system no longer grown starts the last one.
+export const systemOf = (r: Root, systems: number): number => Math.max(0, Math.min(systems - 1, rootSystem(r)))
+
 // Growth that hasn't started: just the roots.
-export function startGrowth(roots: Vec[], attractorCount: number, seed: number): Growth {
+export function startGrowth(roots: Root[], attractorCount: number, seed: number, systems = 1): Growth {
   return {
     step: 0, rng: new Rng(seed).state, idle: 0, done: null,
     x: Float64Array.from(roots.map(r => r[0])), y: Float64Array.from(roots.map(r => r[1])), parent: new Int32Array(roots.length).fill(-1),
-    joins: new Int32Array(0), used: new Uint8Array(attractorCount),
+    sys: Int32Array.from(roots.map(r => systemOf(r, systems))), joins: new Int32Array(0), links: new Int32Array(0), used: new Uint8Array(attractorCount),
   }
 }
 
 export const hasGrown = (d: Design) => d.growth.step > 0 || d.growth.x.length > d.roots.length
 
 export function engineState(g: Growth): EngineState {
-  return { step: g.step, rng: g.rng, idle: g.idle, done: g.done, x: g.x, y: g.y, parent: g.parent, joins: g.joins, used: g.used }
+  return { step: g.step, rng: g.rng, idle: g.idle, done: g.done, x: g.x, y: g.y, parent: g.parent, sys: g.sys, joins: g.joins, links: g.links, used: g.used }
+}
+
+// The systems that have no root, so can't grow.
+export function missingSystems(s: Pick<Settings, 'systems'>, roots: Root[]): number[] {
+  const held = new Set(roots.map(r => systemOf(r, s.systems)))
+  return Array.from({ length: s.systems }, (_, t) => t).filter(t => !held.has(t))
 }
 
 // The shape's outlines in sheet millimetres. An imported outline scales with the sheet, keeping its place on the
@@ -77,12 +93,18 @@ export function outlineFingerprint(imported: Imported | null): string {
 }
 
 // Settings that decide where attractors go. A picture isn't part of it: choosing one places them again on its own.
+// Two or three systems place them differently, shared or each system's own, so they're part of it too.
 export function placementKey(s: Settings, imported: Imported | null): string {
-  return JSON.stringify([s.width, s.height, s.margin, s.shape, s.invert, s.count, s.placement, s.seed, s.shape === 'imported' ? outlineFingerprint(imported) : '', s.clearance])
+  const key: unknown[] = [s.width, s.height, s.margin, s.shape, s.invert, s.count, s.placement, s.seed, s.shape === 'imported' ? outlineFingerprint(imported) : '', s.clearance]
+  if (s.systems > 1) key.push(s.systems, s.coupling)
+  return JSON.stringify(key)
 }
 
+// Interwoven systems each have Count attractors of their own, drawn from one even spread in turn.
+export const attractorTotal = (s: Settings) => (interweaving(s) ? s.count * s.systems : s.count)
+
 export function placeFor(s: Settings, region: Region, picture: DensityMap | null): { points: Float64Array; short: boolean } {
-  return placeAttractors(region, s.count, s.placement === 'picture' && !picture ? 'even' : s.placement, s.seed, picture, s.clearance)
+  return placeAttractors(region, attractorTotal(s), s.placement === 'picture' && !picture ? 'even' : s.placement, s.seed, picture, s.clearance)
 }
 
 // How far inside the edges roots start: half a segment, so the first step can't cross an edge, and a little more
@@ -90,11 +112,80 @@ export function placeFor(s: Settings, region: Region, picture: DensityMap | null
 export const rootInset = (s: Pick<Settings, 'segment' | 'clearance'>): number => Math.max(0.01, s.segment * 0.5, s.clearance > 0 ? s.clearance * 1.01 : 0)
 
 // Where roots go: the shape's own start (a leaf's base, an ellipse's centre), the bottom middle, the centre,
-// a row along the bottom (parallel veins, as in grass), or spaced round the edge (veins growing inward).
-export type RootPlacement = 'shape' | 'base' | 'centre' | 'row' | 'edge'
+// a row along the bottom (parallel veins, as in grass), spaced round the edge (veins growing inward), or at the
+// shape's two ends.
+export type RootPlacement = 'shape' | 'base' | 'centre' | 'row' | 'edge' | 'ends'
 
-// The shape's own start points, moved inside it if needed.
-export function startRoots(s: Settings, region: Region, placement: RootPlacement = 'shape'): Vec[] {
+// Roots by a rule, moved inside the shape if needed, each with its system. With two or three systems, the shape's own
+// start is each system's end of it; a row or a ring of roots takes turns, A, B, A, B; and a root on its own becomes
+// one for each system, side by side.
+export function startRoots(s: Settings, region: Region, placement: RootPlacement = 'shape'): Root[] {
+  const T = Math.max(1, Math.min(3, s.systems))
+  if (placement === 'ends' || (T > 1 && placement === 'shape')) return endRoots(s, region, T)
+  if (T > 1 && placement === 'edge') return edgeRoots(s, region, T)
+  const points = pointRoots(s, region, placement)
+  if (T === 1) return points
+  if (placement === 'row') return points.map((p, i) => rootAt(p, i % T))
+  return sideBySide(s, region, points, T)
+}
+
+// Two or three systems' roots round the outline: six for each system, taking turns, A, B, A, B, so each system's veins
+// grow long and interweave with the others' (a ring of many more grows short spokes side by side). A shape in parts
+// shares them out by outline length, at least one of each system round every part.
+const EDGE_ROOTS_EACH = 6
+function edgeRoots(s: Settings, region: Region, T: number): Root[] {
+  const inset = rootInset(s)
+  const parts = region.parts(), outlines = parts.slice(0, MAX_PART_ROOTS)
+  const lengths = outlines.map(ring => ring.reduce((sum, p, i) => sum + Math.hypot(ring[(i + 1) % ring.length][0] - p[0], ring[(i + 1) % ring.length][1] - p[1]), 0))
+  const per = lengths.reduce((a, b) => a + b, 0)
+  const out: Root[] = []
+  outlines.forEach((ring, i) => {
+    const n = Math.max(T, Math.round((EDGE_ROOTS_EACH * T * lengths[i]) / Math.max(1e-9, per)))
+    const within = outlines.length > 1 ? partTest(parts, i) : undefined, reach = outlines.length > 1 ? boxSize(ring) : Infinity
+    pointsAlong(ring, n).forEach(([x, y], k) => { const p = region.nearestInside(x, y, inset, within, reach); if (p) out.push(rootAt(p, k % T)) })
+  })
+  return out
+}
+
+// Roots at the ends of the shape, or of each part, across its longer side (a leaf's and a tree's base and tip):
+// system A at the bottom or the left, B at the top or the right, and C in the middle. One system gets both ends.
+function endRoots(s: Settings, region: Region, T: number): Root[] {
+  const inset = rootInset(s)
+  const parts = region.parts()
+  const several = parts.length > 1 && (s.shape === 'imported' || s.invert)
+  const upright = !s.invert && (s.shape === 'leaf' || s.shape === 'tree')
+  const out: Root[] = []
+  for (const ring of several ? parts.slice(0, MAX_PART_ROOTS) : [null]) {
+    const [x0, y0, x1, y1] = ring ? boxOf([ring]) : region.box
+    const within = ring ? partTest(parts, parts.indexOf(ring)) : undefined, reach = ring ? boxSize(ring) : Infinity
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2
+    const across = !upright && x1 - x0 > y1 - y0
+    const aims: Vec[] = [across ? [x0, cy] : [cx, y1], across ? [x1, cy] : [cx, y0], [cx, cy]]
+    const systems = T === 1 ? [0, 0] : [0, 1, 2].slice(0, T)
+    systems.forEach((t, i) => { const p = region.nearestInside(aims[i][0], aims[i][1], inset, within, reach); if (p) out.push(rootAt(p, t)) })
+  }
+  return out
+}
+
+// Each root on its own made one for each system, side by side across the shape, far enough apart for their veins
+// and the gap, within the root's part.
+function sideBySide(s: Settings, region: Region, points: Vec[], T: number): Root[] {
+  const inset = rootInset(s), parts = region.parts()
+  const spread = Math.max(4 * s.segment, 2 * s.maxWidth + 2 * s.gap)
+  const out: Root[] = []
+  for (const [x, y] of points) {
+    const k = parts.length > 1 ? partAt(parts, x, y) : -1
+    const within = k >= 0 ? partTest(parts, k) : undefined, reach = k >= 0 ? boxSize(parts[k]) : Infinity
+    for (let t = 0; t < T; t++) {
+      const p = region.nearestInside(x + (t - (T - 1) / 2) * spread, y, inset, within, reach)
+      if (p) out.push(rootAt(p, t))
+    }
+  }
+  return out
+}
+
+// Where a rule puts roots, as points.
+function pointRoots(s: Settings, region: Region, placement: RootPlacement): Vec[] {
   const inset = rootInset(s)
   const [x0, y0, x1, y1] = region.box
   const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2
@@ -254,7 +345,7 @@ export function partsOf(rings: Ring[]): Ring[] {
 }
 
 // How many of the shape's parts (the largest that get roots) have no root in them, so can't grow.
-export function unrootedParts(parts: Ring[], roots: Vec[]): number {
+export function unrootedParts(parts: Ring[], roots: Root[]): number {
   if (parts.length < 2) return 0
   const held = new Set(roots.map(([x, y]) => partAt(parts, x, y)))
   return parts.slice(0, MAX_PART_ROOTS).filter((_, i) => !held.has(i)).length
@@ -298,11 +389,11 @@ export function regionOf(s: Settings, imported: Imported | null): Region {
 }
 
 // A fresh design for these settings: the shape's roots, attractors placed, nothing grown.
-export function freshDesign(s: Settings, imported: Imported | null, picture: DensityMap | null, roots?: Vec[]): Design {
+export function freshDesign(s: Settings, imported: Imported | null, picture: DensityMap | null, roots?: Root[]): Design {
   const region = regionOf(s, imported)
   const placed = placeFor(s, region, picture)
   const start = roots ?? startRoots(s, region)
-  return { settings: s, imported, roots: start, rootsBy: roots ? undefined : 'shape', attractors: placed.points, placedFor: placementKey(s, imported), growth: startGrowth(start, placed.points.length / 2, s.seed) }
+  return { settings: s, imported, roots: start, rootsBy: roots ? undefined : 'shape', attractors: placed.points, placedFor: placementKey(s, imported), growth: startGrowth(start, placed.points.length / 2, s.seed, s.systems) }
 }
 
 // The design after a settings change. When the shape, the sheet or how attractors are placed changes, or a new
@@ -313,7 +404,7 @@ export type Planned = { next: Design; restarts: boolean; short: boolean; noPictu
 
 // Whether a change would place the attractors again and start the veins over: planChange's `restarts`, without
 // placing anything, so the page can ask first and place once.
-export type ChangeOptions = { roots?: Vec[]; rootsBy?: RootPlacement; replace?: boolean }
+export type ChangeOptions = { roots?: Root[]; rootsBy?: RootPlacement; replace?: boolean }
 
 export function changeRestarts(cur: Design, patch: Partial<Settings>, imported: Imported | null, opts: ChangeOptions = {}): boolean {
   const settings = sanitizeSettings({ ...cur.settings, ...patch })
@@ -330,33 +421,42 @@ export function planChange(cur: Design, patch: Partial<Settings>, imported: Impo
   const reshaped = (['width', 'height', 'margin', 'shape', 'invert'] as const).some(k => settings[k] !== cur.settings[k]) || newOutline
   const newShape = settings.shape !== cur.settings.shape || settings.invert !== cur.settings.invert || newOutline
   const was = importedFit(cur.settings, imported), now = importedFit(settings, imported)
-  const scaled = cur.roots.map(([x, y]): Vec => settings.shape === 'imported' && cur.settings.shape === 'imported' && !newOutline
-    ? [((x - was.dx) / was.k) * now.k + now.dx, ((y - was.dy) / was.k) * now.k + now.dy]
-    : [(x * settings.width) / cur.settings.width, (y * settings.height) / cur.settings.height])
+  const scaled = cur.roots.map((r): Root => {
+    const [x, y] = r
+    return rootAt(settings.shape === 'imported' && cur.settings.shape === 'imported' && !newOutline
+      ? [((x - was.dx) / was.k) * now.k + now.dx, ((y - was.dy) / was.k) * now.k + now.dy]
+      : [(x * settings.width) / cur.settings.width, (y * settings.height) / cur.settings.height], rootSystem(r))
+  })
   // Roots placed by a rule are placed again by it for the changed shape, so a margin taken up and back puts them
-  // back where they were; roots placed by hand are moved in only as far as needed, each within its own part.
+  // back where they were; roots placed by hand are moved in only as far as needed, each within its own part. A rule
+  // places roots for each system, so it places them again for a new number of systems too.
   const by = opts.roots ? opts.rootsBy : cur.rootsBy ?? (newShape ? 'shape' : undefined)
-  const moved = newShape || reshaped || settings.clearance !== cur.settings.clearance
+  const moved = newShape || reshaped || settings.clearance !== cur.settings.clearance || settings.systems !== cur.settings.systems
   const start = opts.roots ?? (by ? (moved ? startRoots(settings, region, by) : cur.roots) : rootsFor(settings, region, reshaped ? scaled : cur.roots))
   const placed = replace ? placeFor(settings, region, picture ? fitPicture(picture, settings.width, settings.height) : null) : { points: cur.attractors, short: false }
   return {
-    next: { settings, imported, roots: start, rootsBy: by, attractors: placed.points, placedFor: key, growth: startGrowth(start, placed.points.length / 2, settings.seed) },
+    next: { settings, imported, roots: start, rootsBy: by, attractors: placed.points, placedFor: key, growth: startGrowth(start, placed.points.length / 2, settings.seed, settings.systems) },
     restarts: true, short: placed.short, noPicture: replace && settings.placement === 'picture' && !picture,
   }
 }
 
-// Settings the worker uses while it grows; they apply live.
-export const GROWTH_KEYS: (keyof Settings)[] = ['segment', 'kill', 'attraction', 'loops', 'inertia', 'wiggle', 'pull', 'pullMode', 'apart', 'leafGrowth', 'leafSteps']
+// Settings the worker uses while it grows; they apply live. With two or three systems, the widths do too: veins keep
+// apart by them.
+export const GROWTH_KEYS: (keyof Settings)[] = ['segment', 'kill', 'attraction', 'loops', 'inertia', 'wiggle', 'pull', 'pullMode', 'apart', 'leafGrowth', 'leafSteps', 'gap', 'repel', 'tipPull']
+export const WIDTH_KEYS: (keyof Settings)[] = ['widthRule', 'tipWidth', 'maxWidth', 'exponent']
+export const growthKeys = (s: Pick<Settings, 'systems'>): (keyof Settings)[] => (s.systems > 1 ? [...GROWTH_KEYS, ...WIDTH_KEYS] : GROWTH_KEYS)
 
 // Roots still inside a changed shape, moved in if needed; the shape's own start if none are left. Each stays in
 // the part it was in, so a root moved in from a thin letter doesn't jump to another letter.
-export function rootsFor(s: Settings, region: Region, roots: Vec[]): Vec[] {
+export function rootsFor(s: Settings, region: Region, roots: Root[]): Root[] {
   const inset = rootInset(s)
   const parts = region.parts()
-  const kept = roots.map(([x, y]) => {
+  const kept = roots.map(r => {
+    const [x, y] = r
     const k = parts.length > 1 ? partAt(parts, x, y) : -1
-    return k < 0 ? region.nearestInside(x, y, inset) : region.nearestInside(x, y, inset, partTest(parts, k), boxSize(parts[k]))
-  }).filter((p): p is Vec => p !== null)
+    const p = k < 0 ? region.nearestInside(x, y, inset) : region.nearestInside(x, y, inset, partTest(parts, k), boxSize(parts[k]))
+    return p ? rootAt(p, rootSystem(r)) : null
+  }).filter((p): p is Root => p !== null)
   return kept.length ? kept : startRoots(s, region)
 }
 
@@ -373,7 +473,7 @@ export function fitToSheet(d: Design): { design: Design; off: number } {
   if (!hasGrown(d)) {
     const placed = placeFor(d.settings, region, null)
     const roots = d.rootsBy ? startRoots(d.settings, region, d.rootsBy) : rootsFor(d.settings, region, d.roots)
-    return { design: { ...d, roots, attractors: placed.points, growth: startGrowth(roots, placed.points.length / 2, d.settings.seed) }, off }
+    return { design: { ...d, roots, attractors: placed.points, growth: startGrowth(roots, placed.points.length / 2, d.settings.seed, d.settings.systems) }, off }
   }
   const used = d.growth.used.slice()
   for (let i = 0; i < a.length; i += 2) if (!region.contains(a[i], a[i + 1])) used[i / 2] = 1

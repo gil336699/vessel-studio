@@ -1,7 +1,8 @@
 import { type RefObject, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import type { Root } from '../veins/engine'
 import type { Vec } from '../veins/geometry'
 import type { Region } from '../veins/region'
-import { rootInset } from '../lib/design'
+import { rootAt, rootInset, rootSystem } from '../lib/design'
 import { movesFocus, spaceGrows } from '../lib/keys'
 import { touchFirst } from '../lib/touch'
 import { drawScene } from '../lib/render'
@@ -29,7 +30,7 @@ const FIT_PADDING = 20
 export function Stage({ scene, settings, roots, region, tool, frameRef, controlRef, onAddRoot, onMoveRoot, onRemoveRoot, onZoom, onNotice, onSpaceTap }: {
   scene: Scene
   settings: Settings
-  roots: Vec[]
+  roots: Root[]
   region: Region
   tool: Tool
   frameRef: RefObject<HTMLDivElement | null>
@@ -101,7 +102,7 @@ export function Stage({ scene, settings, roots, region, tool, frameRef, controlR
     ctx.fillStyle = settings.background
     ctx.fillRect(ox * dpr, oy * dpr, settings.width * scale * dpr, settings.height * scale * dpr)
     ctx.restore()
-    const shown = moving && scene.roots ? { ...scene, roots: scene.roots.map((r, i): Vec => (i === moving.index ? [moving.x, moving.y] : r)) } : scene
+    const shown = moving && scene.roots ? { ...scene, roots: scene.roots.map((r, i): Root => (i === moving.index ? rootAt([moving.x, moving.y], rootSystem(r)) : r)) } : scene
     drawScene(ctx, shown, settings, { scale: scale * dpr, ox: ox * dpr, oy: oy * dpr }, { background: null, minPx: 0.6 * dpr })
     if (hover !== null && roots[hover] && scene.roots) {
       const [x, y] = moving && moving.index === hover ? [moving.x, moving.y] : roots[hover]
@@ -190,7 +191,7 @@ export function Stage({ scene, settings, roots, region, tool, frameRef, controlR
   useEffect(() => { if (!space.current.down) setCursor(toolCursor) }, [toolCursor])
 
   // The root under a point, within a finger's or a cursor's reach.
-  const rootAt = (x: number, y: number, touch: boolean): number => {
+  const rootUnder = (x: number, y: number, touch: boolean): number => {
     const reach = Math.max(rootRadius(settings.segment, settings.tipWidth), (touch ? 22 : 10) / scale)
     let best = -1, bestD = reach
     roots.forEach(([rx, ry], i) => { const d = Math.hypot(rx - x, ry - y); if (d <= bestD) { bestD = d; best = i } })
@@ -219,7 +220,7 @@ export function Stage({ scene, settings, roots, region, tool, frameRef, controlR
     }
     if (event.button !== 0) return
     const [x, y] = toWorld(event.clientX, event.clientY)
-    const hit = rootAt(x, y, event.pointerType === 'touch')
+    const hit = rootUnder(x, y, event.pointerType === 'touch')
     if (hit >= 0 && event.altKey) { onRemoveRoot(hit); setHover(null); return }
     if (hit >= 0) {
       const touch = event.pointerType === 'touch'
@@ -279,7 +280,7 @@ export function Stage({ scene, settings, roots, region, tool, frameRef, controlR
       return
     }
     if (event.pointerType === 'touch' || tool !== 'roots' || space.current.down) { if (hover !== null) setHover(null); return }
-    const hit = rootAt(x, y, false)
+    const hit = rootUnder(x, y, false)
     setHover(hit >= 0 ? hit : null)
     setCursor(hit >= 0 ? (event.altKey ? 'not-allowed' : 'move') : 'crosshair')
   }

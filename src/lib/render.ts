@@ -1,9 +1,11 @@
 // Draws a scene on a canvas, for the view and the PNG, from the same scene the SVG and DXF are written from.
 // `scale` is pixels per millimetre and (ox, oy) where the sheet's corner lands. Veins of the same width are
-// stroked together, which keeps tens of thousands of veins quick to draw.
+// stroked together, which keeps tens of thousands of veins quick to draw. With two or three systems, each system
+// has its own colour, and so do Join's joins between its trees.
 import { smoothChain } from '../veins/network'
+import type { Chain } from '../veins/network'
 import type { Scene } from './scene'
-import type { Settings } from './settings'
+import { systemColor, type Settings } from './settings'
 import { ATTRACTOR_COLOR, BOUNDARY_COLOR, ROOT_COLOR, attractorRadius, boundaryWidth, rootRadius } from './style'
 
 export type Transform = { scale: number; ox: number; oy: number }
@@ -30,16 +32,18 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene, s: Settin
     ctx.stroke()
   }
   if (scene.veins?.length) {
-    // Group by drawn width, rounded to a twentieth of a pixel.
-    const groups = new Map<number, typeof scene.veins>()
+    // Group by colour and drawn width, rounded to a twentieth of a pixel.
+    const groups = new Map<string, { color: string; w: number; list: Chain[] }>()
     for (const chain of scene.veins) {
       // At least a twentieth of a pixel: canvas ignores a line width of 0 and would keep the last one.
       const w = Math.max(1, Math.round(Math.max(chain.width, minPx / k) * k * 20))
-      const list = groups.get(w)
-      if (list) list.push(chain); else groups.set(w, [chain])
+      const color = chainColor(chain, s, scene.systems)
+      const key = `${color}${w}`
+      const group = groups.get(key)
+      if (group) group.list.push(chain); else groups.set(key, { color, w, list: [chain] })
     }
-    ctx.strokeStyle = s.veinColor
-    for (const [w, list] of groups) {
+    for (const { color, w, list } of groups.values()) {
+      ctx.strokeStyle = color
       ctx.lineWidth = w / 20 / k
       ctx.beginPath()
       for (const { points, curves } of list) {
@@ -59,10 +63,21 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene, s: Settin
   }
   if (scene.roots) {
     const r = Math.max(rootRadius(s.segment, s.tipWidth), 3 / k)
-    ctx.fillStyle = ROOT_COLOR
     ctx.strokeStyle = '#ffffff'
     ctx.lineWidth = 1 / k
-    for (const [x, y] of scene.roots) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke() }
+    for (const root of scene.roots) {
+      ctx.fillStyle = rootColor(root[2] ?? 0, s, scene.systems)
+      ctx.beginPath(); ctx.arc(root[0], root[1], r, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+    }
   }
   ctx.restore()
 }
+
+// A vein's colour: its system's, or the joins' for a join between Join's trees.
+export function chainColor(chain: Chain, s: Settings, systems: number): string {
+  if (chain.link) return s.linkColor
+  return systems > 1 ? systemColor(s, Math.min(systems - 1, chain.system ?? 0)) : s.veinColor
+}
+
+// A root marker's colour: the root colour with one system, its system's colour with two or three.
+export const rootColor = (t: number, s: Settings, systems: number): string => (systems > 1 ? systemColor(s, Math.min(systems - 1, t)) : ROOT_COLOR)

@@ -1,5 +1,19 @@
 # Vessel Studio Changelog
 
+## 1.5.0 2026-11-25
+
+Two systems that grow together, as Vessel Studio 3D grows them. Before, Vessel Studio grew one system only.
+
+- **Inlet to outlet.** A new preset, and Systems: Two, Join on the Grow tab. An inlet tree grows from one end of the shape and an outlet tree from the other. They share the attractors, each tree's free vein ends pull the other tree, and the two join where they meet, so flow can pass from one to the other, as through a microfluidic chip (the mutual tree attraction of Kinstlinger et al. 2020). On A4, 2,000 attractors grow two trees that join in 52 places in half a second.
+  - **Trim dead ends,** on by default, leaves out the vein ends that never met the other tree, so every vein shown and exported carries flow. The view trims once growth pauses.
+  - Joins are spaced along the trees, as loops are, so two veins that run side by side don't join like the rungs of a ladder, and the two trees' veins never overlap except where they join.
+- **Two interwoven.** A new preset, and Systems: Two or Three, Interweave. Each system has its own attractors and roots, and keeps the Gap (0.63 mm on A4) from the others' veins, edge to edge, along every segment, so systems never touch or cross. A vein that would come too close turns away and tries again, Repel steers veins apart as they grow, and a vein that thickens after passing another system is drawn narrower there. Roots round the edge, taking turns, weave the systems all through the shape.
+- **Roots for each system.** The A, B and C buttons above the sheet, or the A, B and C keys, pick which system the next root starts. Default puts each system at its own end of the shape, or of every part of a drawing, so each earring of a pair gets its own inlet and outlet. A new Ends button puts a root at each end for one system too. Base and Centre put one for each system side by side, Row and Edge take turns, and roots placed by hand keep their systems. A system with no root says so.
+- **Exports** put each system on its own layer in SVG and DXF (System A, System B and Joins), in its own colour from the Style tab, to cut, plot with a pen each, or hide. A design of one system exports as before.
+- **Measurements** show each system's vein points, and the joins and dead ends, or the closest gap between systems.
+- **Project files** of two or three systems are version 2; a design of one system is still version 1, so older versions open it. One system grows exactly as in 1.4.0: all 132 fingerprints of attractors and growth runs match, and it is as fast.
+- **The presets picture** in the README shows all eight presets.
+
 ## 1.4.0 2026-11-19
 
 QA round 3 of 3: the same four reviews (a user test, a developer test, a UI/UX test and real jobs for designers), on 1.3.0.

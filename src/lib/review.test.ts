@@ -31,7 +31,7 @@ describe('PNG hairlines', () => {
       get: (_, key) => (key === 'canvas' ? {} : () => undefined),
       set: (_, key, value) => { if (key === 'lineWidth') widths.push(value as number); return true },
     }) as unknown as CanvasRenderingContext2D
-    const scene: Scene = { width: 100, height: 100, rings: null, attractors: null, roots: null,
+    const scene: Scene = { width: 100, height: 100, systems: 1, rings: null, attractors: null, roots: null,
       veins: [{ points: [[10, 10], [20, 20]], width: 2 }, { points: [[30, 30], [40, 40]], width: 0.01 }] }
     // 30 pixels per inch: a 0.01 mm vein is a hundredth of a pixel.
     drawScene(ctx, scene, { ...DEFAULTS, tipWidth: 0.01 }, { scale: 30 / 25.4, ox: 0, oy: 0 }, { background: null, minPx: 0 })

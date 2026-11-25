@@ -1,7 +1,7 @@
 import { memo } from 'react'
 import type { Placement } from '../veins/attractors'
-import type { PullMode } from '../veins/engine'
-import { LIMITS, PRESETS, type PresetName, type Settings } from '../lib/settings'
+import type { Coupling, PullMode } from '../veins/engine'
+import { interweaving, joining, LIMITS, PRESETS, SYSTEM_NAMES, type PresetName, type Settings } from '../lib/settings'
 import { decimals, toUnits, trimZeros, UNIT_LABEL } from '../lib/units'
 import { Button, RangeField, Section, Segmented, SliderField, SwitchField, type Option } from './Controls'
 import { Icon } from './Icon'
@@ -22,13 +22,25 @@ const PULLS: Option<PullMode>[] = [
   { value: 'out', label: 'Out', tip: 'Pull each vein away from its root, so veins spread outward.' },
 ]
 
+const SYSTEMS: Option<'1' | '2' | '3'>[] = [
+  { value: '1', label: 'One', tip: 'One system of veins.' },
+  { value: '2', label: 'Two', tip: 'Two systems that grow together, each from its own roots: they join into one network, or interweave and stay apart.' },
+  { value: '3', label: 'Three', tip: 'Three systems that interweave and stay apart, each from its own roots, like the artery, portal vein and hepatic vein of a liver.' },
+]
+const COUPLINGS: Option<Coupling>[] = [
+  { value: 'join', label: 'Join', tip: 'An inlet tree and an outlet tree grow toward each other and join where they meet, so flow can pass from one to the other (mutual tree attraction, Kinstlinger et al. 2020).' },
+  { value: 'interweave', label: 'Interweave', tip: 'Two separate systems that fill the same shape and never touch.' },
+]
+const percent = (v: number) => `${Math.round(v * 100)} %`
+
 export const GrowPanel = memo(function GrowPanel({ s, change, onPreset, onShuffle, picture, onPicture }: {
   s: Settings; change: Change; onPreset: (name: PresetName) => void; onShuffle: () => void; picture: string | null; onPicture: () => void
 }) {
   // Lengths are stored in mm and shown in the sheet's unit.
   const k = toUnits(1, s.units, s.dpi), unit = UNIT_LABEL[s.units], digits = decimals(s.units, true)
   const span = Math.max(s.width, s.height)
-  const segMax = Math.max(1, span / 20), killMax = Math.max(2, span / 8), reachMax = Math.max(5, span / 2)
+  const segMax = Math.max(1, span / 20), killMax = Math.max(2, span / 8), reachMax = Math.max(5, span / 2), gapMax = Math.max(2, span / 40)
+  const join = joining(s), weave = interweaving(s)
   return <>
     <Section title="Preset" tip="Sets the growth, widths, colour and a matching built-in shape for this sheet; an imported shape stays.">
       <div className="button-row preset-row">
@@ -36,9 +48,29 @@ export const GrowPanel = memo(function GrowPanel({ s, change, onPreset, onShuffl
       </div>
     </Section>
 
+    <Section title="Systems" tip="One system of veins, or two or three that grow together, each from its own roots.">
+      <Segmented label="Systems" options={SYSTEMS} value={String(s.systems) as '1' | '2' | '3'}
+        onChange={v => change({ systems: Number(v), ...(v === '3' ? { coupling: 'interweave' as const } : {}) }, 'systems')} />
+      {s.systems === 2 && <Segmented label="How they grow" options={COUPLINGS} value={s.coupling} onChange={coupling => change({ coupling }, 'coupling')} />}
+      {join && <>
+        <SliderField label="Tip pull" value={s.tipPull} min={0} max={1} step={0.05} format={percent}
+          tip="How strongly each tree’s free vein ends pull the other tree, so the two meet and join." onChange={tipPull => change({ tipPull }, 'tipPull')} />
+        <SwitchField label="Trim dead ends" checked={s.trim}
+          tip="Leave out vein ends that never met the other tree, so every vein shown and exported carries flow from inlet to outlet; the view trims them once growth pauses." onChange={trim => change({ trim }, 'trim')} />
+      </>}
+      {weave && <>
+        <RangeField label="Gap" value={s.gap} min={0} max={gapMax} step={0.01} digits={digits} scale={k} suffix={unit}
+          tip="The space kept between the veins of different systems, edge to edge; where they pass closer, veins are drawn narrower." onChange={gap => change({ gap }, 'gap')} />
+        <SliderField label="Repel" value={s.repel} min={0} max={1} step={0.05} format={percent}
+          tip="How strongly veins steer away from other systems as they grow." onChange={repel => change({ repel }, 'repel')} />
+      </>}
+      {s.systems > 1 && <p className="hint">Each system grows from its own roots. Default, under Roots on the Shape tab, gives each its own; or pick {SYSTEM_NAMES.slice(0, s.systems).join(', ').replace(/, (?=[^,]*$)/, ' or ')} in the bar above the sheet and add roots with the Roots tool.</p>}
+    </Section>
+
     <Section title="Attractors" tip="Points veins grow toward, each used up once a vein comes within the kill distance.">
-      <RangeField label="Count" value={s.count} min={LIMITS.count[0]} max={LIMITS.count[1]} step={1} digits={0} log onRelease
-        tip="How many attractors fill the shape: more gives denser veins and smoother branches." onChange={count => change({ count: Math.round(count) }, 'count')} />
+      <RangeField label={weave ? 'Count per system' : 'Count'} value={s.count} min={LIMITS.count[0]} max={LIMITS.count[1]} step={1} digits={0} log onRelease
+        tip={weave ? 'How many attractors fill the shape for each system: each system has its own, so more gives each denser veins.' : 'How many attractors fill the shape: more gives denser veins and smoother branches.'}
+        onChange={count => change({ count: Math.round(count) }, 'count')} />
       <Segmented label="Placement" options={placements(Boolean(picture))} value={s.placement} columns={3} onChange={placement => change({ placement }, 'placement')} />
       <div className="button-row one-line">
         <Button tip="New random attractors and wiggle, with the same settings." onClick={onShuffle}><Icon name="dice" />New pattern</Button>
@@ -59,8 +91,9 @@ export const GrowPanel = memo(function GrowPanel({ s, change, onPreset, onShuffl
       {s.attraction > 0 && <RangeField label="Attraction distance" value={s.attraction} min={Math.max(0.1, s.kill)} max={reachMax} step={0.1} digits={digits} scale={k} suffix={unit}
         tip="How far a vein point senses attractors: smaller makes branch tips wander between them, for a wiggly, gnarly look." onChange={attraction => change({ attraction }, 'attraction')} />}
       {s.kill < s.segment && <p className="hint warning">The kill distance is shorter than a segment, so veins can step past attractors without using them up. Make it at least {trimZeros((s.segment * k).toFixed(digits))} {unit}.</p>}
-      <SwitchField label="Loops" checked={s.loops}
-        tip="Veins from several sides grow to the same attractor and join, closing loops like a leaf’s fine net; slower."
+      <SwitchField label="Loops" checked={s.loops && !join} unavailable={join && 'Join closes the network itself, where its two trees meet.'}
+        tip={weave ? 'Veins of the same system from several sides grow to the same attractor and join, closing loops; each system makes its own net. Slower.'
+          : 'Veins from several sides grow to the same attractor and join, closing loops like a leaf’s fine net; slower.'}
         onChange={loops => change({ loops }, 'loops')} />
       <SwitchField label="Leaf growth" checked={s.leafGrowth}
         tip="The shape grows out from the first root, so main veins form first and finer ones fill in after."
@@ -68,7 +101,8 @@ export const GrowPanel = memo(function GrowPanel({ s, change, onPreset, onShuffl
       {s.leafGrowth && <SliderField label="Grows over" value={s.leafSteps} min={LIMITS.leafSteps[0]} max={2000} step={10} format={v => `${Math.round(v)} steps`}
         tip="How many steps the outline takes to reach full size: slower growth gives smoother main veins that follow the edge." onChange={leafSteps => change({ leafSteps }, 'leafSteps')} />}
       <SwitchField label="Keep veins apart" checked={s.apart}
-        tip="Refuses a new point that would land on another vein, so points never pile up."
+        tip={s.systems > 1 ? 'Refuses a new point that would land on another vein of its own system, so points never pile up; the systems keep apart regardless.'
+          : 'Refuses a new point that would land on another vein, so points never pile up.'}
         onChange={apart => change({ apart }, 'apart')} />
       <SliderField label="Speed" value={s.speed} min={LIMITS.speed[0]} max={LIMITS.speed[1]} step={1} format={v => `${Math.round(v)} ${Math.round(v) === 1 ? 'step' : 'steps'} a frame`}
         tip="Steps grown between screen updates: higher grows faster, and lower lets you watch each step." onChange={speed => change({ speed: Math.round(speed) }, 'speed')} />

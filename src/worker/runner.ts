@@ -2,18 +2,20 @@
 // after the page has drawn the last one, so drawing never falls behind and a slow step never freezes the page
 // (the pattern of Line Growth's runner). Frames carry only what changed: the new vein points and joins, and the
 // attractors used up since the last frame. The page keeps the rest.
-import { Engine, type EngineState, type GrowthParams, type StopReason } from '../veins/engine'
-import type { Ring, Vec } from '../veins/geometry'
+import { Engine, type EngineState, type GrowthParams, type Root, type StopReason } from '../veins/engine'
+import type { Ring } from '../veins/geometry'
 import { Region } from '../veins/region'
 
-export type Load = { gen: number; rings: Ring[]; attractors: Float64Array; params: GrowthParams; roots: Vec[]; state: EngineState | null }
+export type Load = { gen: number; rings: Ring[]; attractors: Float64Array; params: GrowthParams; roots: Root[]; state: EngineState | null }
 
 export type Frame = {
   gen: number
   step: number; rng: number; idle: number; done: StopReason | null
-  // Vein points from index `from` on, and join pairs from pair `joinFrom` on.
-  from: number; x: Float64Array; y: Float64Array; parent: Int32Array
+  // Vein points from index `from` on with their systems, loop joins from pair `joinFrom` on, and Join's joins between
+  // the trees from pair `linkFrom` on.
+  from: number; x: Float64Array; y: Float64Array; parent: Int32Array; sys: Int32Array
   joinFrom: number; joins: Int32Array
+  linkFrom: number; links: Int32Array
   used: Int32Array // attractors used up since the last frame
   live: number; waiting: number
   stepsPerSecond: number
@@ -22,7 +24,7 @@ export type Frame = {
 export type ToRunner =
   | { kind: 'load'; load: Load }
   | { kind: 'params'; params: GrowthParams }
-  | { kind: 'root'; x: number; y: number }
+  | { kind: 'root'; x: number; y: number; system?: number }
   // steps: null grows until stopped; a number runs that many steps, as Step does.
   | { kind: 'play'; run: number; steps: number | null; perBatch: number }
   | { kind: 'speed'; perBatch: number }
@@ -46,25 +48,26 @@ export function createRunner(post: (message: FromRunner, transfer: Transferable[
   let gen = 0
   let run: Run | null = null
   let lastBatch = 0
-  // What the page has: points and join pairs up to these counts.
-  let sentPoints = 0, sentJoins = 0
+  // What the page has: points, join pairs and link pairs up to these counts.
+  let sentPoints = 0, sentJoins = 0, sentLinks = 0
   let used: number[] = []
   let dirty = false, inFlight = false
   let rateSteps = 0, rateStart = 0, rate = 0
 
   function frame(): [Frame, Transferable[]] {
     const e = engine!
-    const n = e.points, j = e.joins.length / 2
+    const n = e.points, j = e.joins.length / 2, l = e.links.length / 2
     const out: Frame = {
       gen, step: e.step, rng: e.rngState, idle: e.idle, done: e.done,
-      from: sentPoints, x: e.x.slice(sentPoints, n), y: e.y.slice(sentPoints, n), parent: e.parent.slice(sentPoints, n),
+      from: sentPoints, x: e.x.slice(sentPoints, n), y: e.y.slice(sentPoints, n), parent: e.parent.slice(sentPoints, n), sys: e.sys.slice(sentPoints, n),
       joinFrom: sentJoins, joins: e.joins.slice(sentJoins * 2, j * 2),
+      linkFrom: sentLinks, links: e.links.slice(sentLinks * 2, l * 2),
       used: Int32Array.from(used), live: e.live, waiting: e.waiting, stepsPerSecond: run ? rate : 0,
     }
-    sentPoints = n; sentJoins = j; used = []
+    sentPoints = n; sentJoins = j; sentLinks = l; used = []
     dirty = false
     inFlight = true
-    return [out, [out.x.buffer, out.y.buffer, out.parent.buffer, out.joins.buffer, out.used.buffer]]
+    return [out, [out.x.buffer, out.y.buffer, out.parent.buffer, out.sys.buffer, out.joins.buffer, out.links.buffer, out.used.buffer]]
   }
   function flush() {
     if (!engine || !dirty || inFlight) return
@@ -130,7 +133,7 @@ export function createRunner(post: (message: FromRunner, transfer: Transferable[
         engine = next
         // The page already has this state; the first frame it needs is the next change. With leaf growth, it doesn't
         // know how many attractors are still to appear, so an empty frame tells it.
-        sentPoints = engine.points; sentJoins = engine.joins.length / 2; used = []
+        sentPoints = engine.points; sentJoins = engine.joins.length / 2; sentLinks = engine.links.length / 2; used = []
         dirty = engine.waiting > 0; inFlight = false
         flush()
         return
@@ -149,7 +152,7 @@ export function createRunner(post: (message: FromRunner, transfer: Transferable[
         run.timer = setTimeout(guarded(batch), 0)
         return
       case 'stop': end(); return
-      case 'root': e.addRoot(message.x, message.y); dirty = true; flush(); return
+      case 'root': e.addRoot(message.x, message.y, message.system ?? 0); dirty = true; flush(); return
     }
   }
 

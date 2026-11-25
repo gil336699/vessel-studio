@@ -1,15 +1,19 @@
 // DXF for CAD, CAM and laser software, as AutoCAD R12 text, the most widely read version. Each vein between two
 // forks is one polyline through its points, or through its smooth curve when Smooth curves is on (Fusion and most
 // CAM read polylines more reliably than splines). The shape, attractors and roots go on their own layers when the
-// view shows them. DXF has no line widths in R12, so the veins are centre lines; the SVG carries their widths.
-// DXF's y axis points up, so y is flipped.
-import { flattenChain, flattenCurves } from '../veins/network'
+// view shows them; with two or three systems, each system's veins and Join's joins between its trees do too. DXF has
+// no line widths in R12, so the veins are centre lines; the SVG carries their widths. DXF's y axis points up, so y is
+// flipped.
+import { flattenChain, flattenCurves, type Chain } from '../veins/network'
 import { num } from './format'
 import type { Scene } from './scene'
-import type { Settings } from './settings'
+import { SYSTEM_NAMES, type Settings } from './settings'
 import { attractorRadius, rootRadius } from './style'
 
 export const LAYER_VEINS = 'VEINS'
+export const LAYER_JOINS = 'JOINS'
+// System A's veins and so on, with two or three systems.
+export const systemLayer = (t: number) => `VEINS_${SYSTEM_NAMES[t]}`
 export const LAYER_SHAPE = 'SHAPE'
 export const LAYER_ATTRACTORS = 'ATTRACTORS'
 export const LAYER_ROOTS = 'ROOTS'
@@ -33,9 +37,17 @@ export function designDxf(scene: Scene, s: Settings): string {
   pair(9, '$EXTMAX'); pair(10, X(scene.width)); pair(20, Y(0)); pair(30, 0)
   pair(0, 'ENDSEC')
 
-  // AutoCAD colours: 7 black or white, 4 cyan, 8 grey, 1 red.
+  // AutoCAD colours: 7 black or white, 4 cyan, 8 grey, 1 red, 5 blue, 3 green, 2 yellow.
+  const T = scene.systems
+  const layerOf = (c: Chain) => (T === 1 ? LAYER_VEINS : c.link ? LAYER_JOINS : systemLayer(Math.min(T - 1, c.system ?? 0)))
   const layers: [string, number][] = []
-  if (scene.veins?.length) layers.push([LAYER_VEINS, 7])
+  if (scene.veins?.length) {
+    if (T === 1) layers.push([LAYER_VEINS, 7])
+    else {
+      for (let t = 0; t < T; t++) if (scene.veins.some(c => !c.link && layerOf(c) === systemLayer(t))) layers.push([systemLayer(t), [1, 5, 3][t]])
+      if (scene.veins.some(c => c.link)) layers.push([LAYER_JOINS, 2])
+    }
+  }
   if (scene.rings) layers.push([LAYER_SHAPE, 4])
   if (scene.attractors?.length) layers.push([LAYER_ATTRACTORS, 8])
   if (scene.roots) layers.push([LAYER_ROOTS, 1])
@@ -54,7 +66,7 @@ export function designDxf(scene: Scene, s: Settings): string {
   if (scene.rings) for (const ring of scene.rings) polyline(ring, true, LAYER_SHAPE)
   if (scene.veins) for (const chain of scene.veins) {
     const p = !s.smooth ? chain.points : chain.curves ? flattenCurves(chain.points[0], chain.curves, CURVE_POINTS) : flattenChain(chain.points, CURVE_POINTS)
-    polyline(p, false, LAYER_VEINS)
+    polyline(p, false, layerOf(chain))
   }
   if (scene.attractors) {
     const r = attractorRadius(s.segment), a = scene.attractors

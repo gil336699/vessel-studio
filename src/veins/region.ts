@@ -397,7 +397,7 @@ export function partAt(parts: Ring[], x: number, y: number): number {
 }
 
 // The shortest distance between segments ab and cd: 0 when they meet, otherwise from an end of one to the other.
-function segmentDistance(ax: number, ay: number, bx: number, by: number, cx: number, cy: number, dx: number, dy: number): number {
+export function segmentDistance(ax: number, ay: number, bx: number, by: number, cx: number, cy: number, dx: number, dy: number): number {
   if (segmentMeets(ax, ay, bx, by, cx, cy, dx, dy)) return 0
   return Math.min(toSegment(ax, ay, cx, cy, dx, dy).d, toSegment(bx, by, cx, cy, dx, dy).d, toSegment(cx, cy, ax, ay, bx, by).d, toSegment(dx, dy, ax, ay, bx, by).d)
 }

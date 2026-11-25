@@ -17,7 +17,7 @@ export class GrowthClient {
 
   load(load: Load) { this.send({ kind: 'load', load: { ...load, attractors: load.attractors.slice() } }) }
   params(params: GrowthParams) { this.send({ kind: 'params', params }) }
-  root(x: number, y: number) { this.send({ kind: 'root', x, y }) }
+  root(x: number, y: number, system = 0) { this.send({ kind: 'root', x, y, system }) }
   play(steps: number | null, perBatch: number): number { this.send({ kind: 'play', run: ++this.runs, steps, perBatch }); return this.runs }
   speed(perBatch: number) { this.send({ kind: 'speed', perBatch }) }
   stop() { this.send({ kind: 'stop' }) }

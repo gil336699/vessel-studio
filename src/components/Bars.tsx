@@ -1,6 +1,7 @@
 import { memo, type ReactNode } from 'react'
 import { networkStats, widestVein } from '../veins/network'
-import type { Settings } from '../lib/settings'
+import { interweaving, joining, SYSTEM_NAMES, systemColor, type Settings } from '../lib/settings'
+import { veinLayout } from '../lib/scene'
 import { formatLength, formatLong } from '../lib/units'
 import type { Stats } from '../useVeins'
 import { Button } from './Controls'
@@ -8,6 +9,7 @@ import { Icon, type IconName } from './Icon'
 import type { Tool } from './Stage'
 import { touchFirst } from '../lib/touch'
 import { widthSettings } from '../lib/settings'
+import type { Mirror } from '../lib/scene'
 
 // The floating bars round the sheet: tools and what's shown on top, growth controls and status below, and the
 // measurements panel.
@@ -35,8 +37,9 @@ const VIEW: { key: ViewKey; label: string; name: string; shortcut: string; tip: 
   { key: 'showRoots', label: 'Roots', name: 'Show roots', shortcut: '4', tip: 'Show or hide the roots, where veins start; exports hold what’s shown.' },
 ]
 
-export function ViewBar({ tool, setTool, s, toggle, zoom, onFit, onZoom }: {
-  tool: Tool; setTool: (tool: Tool) => void; s: Settings
+// system: the system the next root starts, with two or three.
+export function ViewBar({ tool, setTool, s, system, setSystem, toggle, zoom, onFit, onZoom }: {
+  tool: Tool; setTool: (tool: Tool) => void; s: Settings; system: number; setSystem: (t: number) => void
   toggle: (key: ViewKey) => void; zoom: number; onFit: () => void; onZoom: (factor: number) => void
 }) {
   return <div className="viewport-bars">
@@ -44,6 +47,12 @@ export function ViewBar({ tool, setTool, s, toggle, zoom, onFit, onZoom }: {
       <div className="floating-bar glass" role="toolbar" aria-label="Tools">
         {TOOLS.map(t => <Button key={t.id} pressed={tool === t.id} tip={t.tip} shortcut={t.key} label={t.label} onClick={() => setTool(t.id)}>
           <Icon name={t.icon} /><span className="compact-label">{t.label}</span></Button>)}
+        {s.systems > 1 && <>
+          <span className="bar-divider" aria-hidden="true" />
+          {SYSTEM_NAMES.slice(0, s.systems).map((name, t) => <Button key={name} pressed={system === t} shortcut={name} label={`Next root starts system ${name}`}
+            tip={`The next root you add starts system ${name}${joining(s) ? (t === 0 ? ', the inlet tree' : ', the outlet tree') : ''}.`} onClick={() => setSystem(t)}>
+            <span className="system-dot" style={{ background: systemColor(s, t) }} aria-hidden="true" />{name}</Button>)}
+        </>}
       </div>
       <div className="floating-bar glass" role="toolbar" aria-label="Show">
         {VIEW.map(v => <Button key={v.key} pressed={s[v.key]} shortcut={v.shortcut} tip={v.tip} label={v.name} onClick={() => toggle(v.key)}>{v.label}</Button>)}
@@ -83,17 +92,34 @@ export function Dock({ running, stopping, canGrow, onGrow, onPause, onStep, onRe
   </div>
 }
 
-type Net = { x: ArrayLike<number>; y: ArrayLike<number>; parent: ArrayLike<number>; joins: ArrayLike<number>; points: number }
-
-// Memoised on the frame counter, so it measures the veins once per frame.
-export const Inspector = memo(function Inspector({ s, stats, net, attractors, roots }: { s: Settings; stats: Stats; net: Net; attractors: number; roots: number }) {
+// Memoised on the frame counter, so it measures the veins once per frame. running: the closest gap between interwoven
+// systems searches every vein, so it waits until growth pauses.
+export const Inspector = memo(function Inspector({ s, stats, net, attractors, roots, running }: { s: Settings; stats: Stats; net: Mirror; attractors: number; roots: number; running: boolean }) {
   const n = networkStats(net.x, net.y, net.parent, net.joins, net.points)
   const L = (mm: number) => formatLength(mm, s.units, s.dpi, true)
   // Max width is a cap: how wide veins get depends on how many ends they feed, so show the widest.
   const widest = widestVein(net.parent, net.points, widthSettings(s))
+  const several = s.systems > 1 && net.sys
+  const perSystem = several ? SYSTEM_NAMES.slice(0, s.systems).map((name, t) => { let c = 0; for (let v = 0; v < net.points; v++) if (net.sys![v] === t) c++; return `${name} ${c.toLocaleString()}` }).join(' · ') : ''
+  const links = joining(s) && net.links ? net.links.length / 2 : 0
+  // Join's dead ends: vein ends that never met the other tree.
+  let deadEnds = 0
+  if (joining(s) && net.links) {
+    const linked = new Set(Array.from(net.links)), kids = new Int32Array(net.points)
+    for (let v = 0; v < net.points; v++) if (net.parent[v] >= 0) kids[net.parent[v]]++
+    for (let v = 0; v < net.points; v++) if (kids[v] === 0 && net.parent[v] >= 0 && !linked.has(v)) deadEnds++
+  }
+  const closest = interweaving(s) && !running && net.points > 1 ? veinLayout(s, net, true).closest : null
   const rows: [string, ReactNode, string][] = [
     ['Sheet', `${formatLength(s.width, s.units, s.dpi)} × ${formatLength(s.height, s.units, s.dpi)}`, 'Width × height of the sheet, which is also the size of every export.'],
     ['Vein points', n.points.toLocaleString(), 'Points the veins are made of, one segment length apart.'],
+    ...(several ? [['Per system', perSystem, 'Vein points in each system.'] as [string, ReactNode, string]] : []),
+    ...(joining(s) ? [
+      ['Joins', links.toLocaleString(), 'Places where the inlet tree and the outlet tree met and joined, so flow can pass from one to the other.'],
+      ['Dead ends', deadEnds.toLocaleString(), 'Vein ends that never met the other tree; with Trim dead ends on, the view and exports leave them out.'],
+    ] as [string, ReactNode, string][] : []),
+    ...(interweaving(s) ? [['Closest gap', running ? 'after growing' : closest !== null && Number.isFinite(closest) ? L(Math.max(0, closest)) : '—',
+      'The closest two systems’ veins come, edge to edge, after narrowing veins where they pass close.'] as [string, ReactNode, string]] : []),
     ['Forks', n.forks.toLocaleString(), 'Vein points where a vein splits in two or more.'],
     ['Vein ends', n.ends.toLocaleString(), 'Veins that end freely, not in a loop.'],
     ['Loops', n.loops.toLocaleString(), 'Places where veins from two sides met at an attractor and joined, closing a loop, with Loops on (Grow tab).'],
@@ -111,4 +137,4 @@ export const Inspector = memo(function Inspector({ s, stats, net, attractors, ro
     <h2 id="measure-title">Measurements</h2>
     <dl>{rows.map(([term, value, tip]) => <div key={term}><dt data-tip={tip} tabIndex={0}>{term}</dt><dd>{value}</dd></div>)}</dl>
   </section>
-}, (a, b) => a.stats.revision === b.stats.revision && a.s === b.s && a.attractors === b.attractors && a.roots === b.roots)
+}, (a, b) => a.stats.revision === b.stats.revision && a.s === b.s && a.attractors === b.attractors && a.roots === b.roots && a.running === b.running)

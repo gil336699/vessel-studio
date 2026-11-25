@@ -2,8 +2,8 @@
 // unsaved state and the growth worker. The worker owns the veins while they grow. The page keeps a mirror that
 // each frame adds to, for drawing, and copies it into the design when growth stops.
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Vec } from './veins/geometry'
-import { changeRestarts, type Design, engineState, type Growth, GROWTH_KEYS, hasGrown, type Imported, planChange, type RootPlacement, shapeRings, startGrowth } from './lib/design'
+import type { Root } from './veins/engine'
+import { changeRestarts, type Design, engineState, type Growth, growthKeys, hasGrown, type Imported, planChange, rootAt, type RootPlacement, shapeRings, startGrowth } from './lib/design'
 import { emptyHistory, record, redo as redoStep, undo as undoStep, type History } from './lib/history'
 import { growthParams, LIMITS, type Settings } from './lib/settings'
 import type { PictureData } from './lib/picture'
@@ -16,17 +16,19 @@ export type Stats = { revision: number; step: number; points: number; live: numb
 
 // The veins as the worker last sent them, in arrays that grow as frames add points.
 export class Mirror {
-  x = new Float64Array(0); y = new Float64Array(0); parent = new Int32Array(0); joins = new Int32Array(0); used = new Uint8Array(0)
-  points = 0; joinPairs = 0
+  x = new Float64Array(0); y = new Float64Array(0); parent = new Int32Array(0); sys = new Int32Array(0); joins = new Int32Array(0); links = new Int32Array(0); used = new Uint8Array(0)
+  points = 0; joinPairs = 0; linkPairs = 0
   step = 0; rng = 0; idle = 0; done: Growth['done'] = null; live = 0; waiting = 0
 
   reset(g: Growth) {
     this.x = grow(new Float64Array(0), g.x.length); this.x.set(g.x)
     this.y = grow(new Float64Array(0), g.y.length); this.y.set(g.y)
     this.parent = grow(new Int32Array(0), g.parent.length); this.parent.set(g.parent)
+    this.sys = grow(new Int32Array(0), g.sys.length); this.sys.set(g.sys)
     this.joins = grow(new Int32Array(0), g.joins.length); this.joins.set(g.joins)
+    this.links = grow(new Int32Array(0), g.links.length); this.links.set(g.links)
     this.used = g.used.slice()
-    this.points = g.x.length; this.joinPairs = g.joins.length / 2
+    this.points = g.x.length; this.joinPairs = g.joins.length / 2; this.linkPairs = g.links.length / 2
     this.step = g.step; this.rng = g.rng; this.idle = g.idle; this.done = g.done
     this.live = this.used.reduce((n, u) => n + (u ? 0 : 1), 0)
     this.waiting = 0
@@ -34,14 +36,17 @@ export class Mirror {
 
   // Adds a frame's changes. False when the frame doesn't follow on from what's here.
   apply(f: Frame): boolean {
-    if (f.from !== this.points || f.joinFrom !== this.joinPairs) return false
+    if (f.from !== this.points || f.joinFrom !== this.joinPairs || f.linkFrom !== this.linkPairs) return false
     const n = this.points + f.x.length
-    this.x = grow(this.x, n); this.y = grow(this.y, n); this.parent = grow(this.parent, n)
-    this.x.set(f.x, this.points); this.y.set(f.y, this.points); this.parent.set(f.parent, this.points)
+    this.x = grow(this.x, n); this.y = grow(this.y, n); this.parent = grow(this.parent, n); this.sys = grow(this.sys, n)
+    this.x.set(f.x, this.points); this.y.set(f.y, this.points); this.parent.set(f.parent, this.points); this.sys.set(f.sys, this.points)
     this.points = n
     const j = this.joinPairs * 2 + f.joins.length
     this.joins = grow(this.joins, j); this.joins.set(f.joins, this.joinPairs * 2)
     this.joinPairs = j / 2
+    const l = this.linkPairs * 2 + f.links.length
+    this.links = grow(this.links, l); this.links.set(f.links, this.linkPairs * 2)
+    this.linkPairs = l / 2
     for (const s of f.used) this.used[s] = 1
     this.step = f.step; this.rng = f.rng; this.idle = f.idle; this.done = f.done; this.live = f.live; this.waiting = f.waiting
     return true
@@ -55,11 +60,17 @@ export class Mirror {
   }
 
   view() {
-    return { x: this.x.subarray(0, this.points), y: this.y.subarray(0, this.points), parent: this.parent.subarray(0, this.points), joins: this.joins.subarray(0, this.joinPairs * 2), points: this.points }
+    return {
+      x: this.x.subarray(0, this.points), y: this.y.subarray(0, this.points), parent: this.parent.subarray(0, this.points), sys: this.sys.subarray(0, this.points),
+      joins: this.joins.subarray(0, this.joinPairs * 2), links: this.links.subarray(0, this.linkPairs * 2), points: this.points,
+    }
   }
 
   growth(): Growth {
-    return { step: this.step, rng: this.rng, idle: this.idle, done: this.done, x: this.x.slice(0, this.points), y: this.y.slice(0, this.points), parent: this.parent.slice(0, this.points), joins: this.joins.slice(0, this.joinPairs * 2), used: this.used.slice() }
+    return {
+      step: this.step, rng: this.rng, idle: this.idle, done: this.done, x: this.x.slice(0, this.points), y: this.y.slice(0, this.points), parent: this.parent.slice(0, this.points),
+      sys: this.sys.slice(0, this.points), joins: this.joins.slice(0, this.joinPairs * 2), links: this.links.slice(0, this.linkPairs * 2), used: this.used.slice(),
+    }
   }
 }
 
@@ -205,7 +216,7 @@ export function useVeins(initial: () => { design: Design; saved: boolean }, setS
 
   // A settings change. Ones that start the veins again wait for growth to stop; the rest apply live. Resolves to
   // the design after it.
-  const change = useCallback((patch: Partial<Settings>, key: string | null = null, opts: { imported?: Imported | null; roots?: Vec[]; rootsBy?: RootPlacement; quiet?: boolean } = {}): Promise<Design> => {
+  const change = useCallback((patch: Partial<Settings>, key: string | null = null, opts: { imported?: Imported | null; roots?: Root[]; rootsBy?: RootPlacement; quiet?: boolean } = {}): Promise<Design> => {
     const apply = (): Design => {
       const cur = current()
       const imported = opts.imported === undefined ? cur.imported : opts.imported
@@ -244,7 +255,7 @@ export function useVeins(initial: () => { design: Design; saved: boolean }, setS
       committed.current = { ...next, growth: cur.growth }
       setDesign(committed.current)
       if (capped.length) statusRef.current({ text: capped.join(' ') })
-      if (GROWTH_KEYS.some(k => next.settings[k] !== cur.settings[k])) {
+      if (growthKeys(next.settings).some(k => next.settings[k] !== cur.settings[k])) {
         client.current?.params(growthParams(next.settings))
         // New growth settings may let finished growth carry on, as the engine allows: from where the veins are,
         // not from the roots.
@@ -302,7 +313,7 @@ export function useVeins(initial: () => { design: Design; saved: boolean }, setS
     await halt()
     const cur = current()
     remember(cur, null)
-    const next = { ...cur, growth: startGrowth(cur.roots, cur.attractors.length / 2, cur.settings.seed) }
+    const next = { ...cur, growth: startGrowth(cur.roots, cur.attractors.length / 2, cur.settings.seed, cur.settings.systems) }
     commit(next)
     load(next)
     setUnsaved(true)
@@ -331,30 +342,32 @@ export function useVeins(initial: () => { design: Design; saved: boolean }, setS
   }, [halt, current, commit, load])
 
   // Roots. Before any growth, an edit just moves the start. After growth has begun, a new root joins in as a
-  // vein of its own; moving or removing one starts the veins again (Undo brings them back).
-  const addRoot = useCallback((x: number, y: number) => {
+  // vein of its own; moving or removing one starts the veins again (Undo brings them back). system: the system the
+  // root starts, with two or three.
+  const addRoot = useCallback((x: number, y: number, system = 0) => {
     const cur = current()
     remember(cur, null)
     setUnsaved(true)
+    const root = rootAt([x, y], system)
     if (hasGrown(cur) || runningRef.current) {
-      committed.current = { ...cur, roots: [...cur.roots, [x, y]], rootsBy: undefined }
+      committed.current = { ...cur, roots: [...cur.roots, root], rootsBy: undefined }
       setDesign(committed.current)
-      client.current?.root(x, y)
+      client.current?.root(x, y, system)
       return
     }
-    const roots: Vec[] = [...cur.roots, [x, y]]
-    const next = { ...cur, roots, rootsBy: undefined, growth: startGrowth(roots, cur.attractors.length / 2, cur.settings.seed) }
+    const roots: Root[] = [...cur.roots, root]
+    const next = { ...cur, roots, rootsBy: undefined, growth: startGrowth(roots, cur.attractors.length / 2, cur.settings.seed, cur.settings.systems) }
     commit(next)
     load(next)
   }, [current, remember, commit, load])
 
   // message: what to say instead of the usual note, which only comes once veins have grown. by: the rule that
   // placed them, if one did.
-  const setRoots = useCallback(async (roots: Vec[], key: string | null = null, message?: string, by?: RootPlacement) => {
+  const setRoots = useCallback(async (roots: Root[], key: string | null = null, message?: string, by?: RootPlacement) => {
     await halt()
     const cur = current()
     remember(cur, key)
-    const next = { ...cur, roots, rootsBy: by, growth: startGrowth(roots, cur.attractors.length / 2, cur.settings.seed) }
+    const next = { ...cur, roots, rootsBy: by, growth: startGrowth(roots, cur.attractors.length / 2, cur.settings.seed, cur.settings.systems) }
     commit(next)
     load(next)
     setUnsaved(true)

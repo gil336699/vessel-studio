@@ -6,6 +6,7 @@ Vessel Studio is a browser app that grows leaf veins, blood vessels, trees and r
 - Grow open veins or closed ones that join into loops, inside a leaf, an ellipse, a ring, a tree, or an outline imported from Illustrator.
 - Holes in the outline are obstacles the veins go round.
 - Veins thicken toward their roots by Murray's law.
+- Grow two or three systems together, as Vessel Studio 3D does: an inlet tree and an outlet tree that join where they meet, so flow can pass from one to the other, or interwoven systems that fill the same shape and never touch.
 - Export the result at real size: SVG for Illustrator, Inkscape and pen plotters, DXF for Fusion and CAM, or PNG.
 
 It rebuilds Gil's older space colonization pages (Vessel Lab, Basic, BioVessel Pro and Morphic Lab Pro) as one app.
@@ -16,7 +17,7 @@ It rebuilds Gil's older space colonization pages (Vessel Lab, Basic, BioVessel P
 
 [Watch the demo as a video](https://github.com/gil336699/vessel-studio/releases/download/v1.4.0/vessel-studio-demo.mp4) (MP4, 1920 × 1080, 28 seconds).
 
-![The six presets, grown by the app's engine on A4: Leaf, open veins from the base with a midrib; Leaf with loops, a fine closed net; Tree, a trunk branching into its crown; Arterial, long smooth vessels from the centre; Neural, fine wandering branches; Capillary, a dense bed of small loops.](docs/presets.png)
+![The eight presets, grown by the app's engine on A4: Leaf, open veins from the base with a midrib; Leaf with loops, a fine closed net; Tree, a trunk branching into its crown; Arterial, long smooth vessels from the centre; Neural, fine wandering branches; Capillary, a dense bed of small loops; Inlet to outlet, a red inlet tree from the bottom and a purple outlet tree from the top that join in the middle; Two interwoven, red and purple systems from roots round the edge, woven through each other without touching.](docs/presets.png)
 
 ## Run
 
@@ -39,9 +40,9 @@ GitHub Actions builds the app and publishes it to GitHub Pages on every push to 
   - **Shape:** sheet size, the shape and the roots.
   - **Style:** vein widths, colours and curves.
   - **File:** projects and exports.
-- **Top:** the Roots and Pan tools, and switches for what's shown: Veins, Attractors, Shape and Roots. Every export holds exactly what's shown. Zoom sits there too.
+- **Top:** the Roots and Pan tools, and switches for what's shown: Veins, Attractors, Shape and Roots. Every export holds exactly what's shown. Zoom sits there too. With two or three systems, A, B and C buttons beside the tools pick which system the next root starts.
 - **Bottom:** the dock, with Grow or Pause, Step, Reset, the status, and Undo and Redo.
-- **Right:** measurements: vein points, forks, ends, loops, roots, attractors left, total length, steps and speed.
+- **Right:** measurements: vein points, forks, ends, loops, roots, attractors left, total length, steps and speed. With two or three systems, the vein points of each, and the joins and dead ends (Join) or the closest gap between systems (Interweave).
 
 ## Help in the app
 
@@ -55,7 +56,7 @@ GitHub Actions builds the app and publishes it to GitHub Pages on every push to 
 ## Workflow
 
 1. **Pick the sheet and the shape** on the Shape tab, or import an SVG outline. Choose where veins start with the root buttons, or click with the Roots tool.
-2. **Pick a preset** on the Grow tab: Leaf, Leaf with loops, Tree, Arterial, Neural or Capillary. Each sets the growth and a look, with its lengths fitted to the sheet it's chosen on, so choose the sheet first; after a big change of sheet size, choose the preset again (the status says so). An imported shape and roots placed by hand stay.
+2. **Pick a preset** on the Grow tab: Leaf, Leaf with loops, Tree, Arterial, Neural, Capillary, Inlet to outlet or Two interwoven. Each sets the growth and a look, with its lengths fitted to the sheet it's chosen on, so choose the sheet first; after a big change of sheet size, choose the preset again (the status says so). An imported shape and roots placed by hand stay.
 3. **Grow:** press Space, or Grow. Growth settings (lengths, loops, feel) change live while the veins grow. Settings that move attractors start the veins again.
 4. **Style:** Murray widths or one even width, the tip and largest width in real units, and colours.
 5. **Export** on the File tab, or save a project to carry on later exactly where it stopped.
@@ -97,9 +98,9 @@ With the clearance at 0, every preset and every run above grew exactly what 1.0.
 
 ### With pen plotters, lasers, Fusion and 3D printers
 
-- **Pen plotters:** set Width to Even for one pen. The SVG's groups are Inkscape layers too, for AxiDraw.
+- **Pen plotters:** set Width to Even for one pen. The SVG's groups are Inkscape layers too, for AxiDraw. With two or three systems, each is a layer of its own, for a pen each.
 - **Lasers:** SVG and DXF leave the background out, because a filled rectangle would be engraved. Veins are stroked centre lines; set cut or engrave in the laser software. Cutting a leaf skeleton needs the veins' outlines, which come later.
-- **Fusion and CAM:** DXF R12, in mm or inches, with veins as polylines (smooth curves as close polylines) on layer `VEINS`.
+- **Fusion and CAM:** DXF R12, in mm or inches, with veins as polylines (smooth curves as close polylines) on layer `VEINS`, or with two or three systems on `VEINS_A`, `VEINS_B`, `VEINS_C` and `JOINS`. For a microfluidic chip, Inlet to outlet with Trim dead ends gives channels that all carry flow from the inlet to the outlet; set an edge clearance to keep them off the chip's edge.
 - **3D printing:** keep veins at least 0.8 mm wide for a 0.4 mm nozzle (two lines). Set it with Tip width on the Style tab.
 
 ## Feature reference
@@ -115,7 +116,24 @@ With the clearance at 0, every preset and every run above grew exactly what 1.0.
 | Imported | Every closed path of an SVG, read even-odd, so a shape inside a shape is a hole. Outlined strokes are read as the lines they were (see [With Illustrator](#with-illustrator)). Open paths are left out, and the status says so. The outline scales with the sheet. |
 | Grow outside the shape | The sheet with the shape as a hole, so veins wrap round it. |
 | Edge clearance | How far veins stay inside the shape's edges and holes, in real units. 0, the default, lets veins reach the outline, as in a real leaf. More keeps vein centre lines that far from a drawn outline or a cut line: every vein, loop join, attractor and root keeps it. For a clear gap, use more than half the widest vein near the edge. Changing it places the attractors again. |
-| Roots | Default (a leaf's base, an ellipse's centre), Base, Centre, Row (along the bottom, for parallel veins), Edge (round every part's outline, growing in), or click with the Roots tool. For an imported drawing or a shape grown outside, every button puts roots in every separate part, up to 500. Roots placed with a button follow the shape: change the sheet, margin or edge clearance and they're placed again the same way. Roots placed by hand are moved in only as far as needed, each within its own part, and a preset keeps them. Drag a root to move it; Alt-click it, or press and hold it on a touch screen, to remove it. Once veins have grown, moving or removing a root asks first. |
+| Roots | Default (a leaf's base, an ellipse's centre), Base, Centre, Row (along the bottom, for parallel veins), Edge (round every part's outline, growing in), Ends (a root at each end of the shape, across its longer side), or click with the Roots tool. For an imported drawing or a shape grown outside, every button puts roots in every separate part, up to 500. Roots placed with a button follow the shape: change the sheet, margin or edge clearance and they're placed again the same way. Roots placed by hand are moved in only as far as needed, each within its own part, and a preset keeps them. Drag a root to move it; Alt-click it, or press and hold it on a touch screen, to remove it. Once veins have grown, moving or removing a root asks first. |
+
+### Systems
+
+Two or three systems grow together, each from its own roots, as in Vessel Studio 3D. Set them on the Grow tab, or pick one of the two presets.
+
+| Choice | What it does |
+| --- | --- |
+| One | One system of veins, as before 1.5.0. It grows exactly as 1.4.0 did. |
+| Two, Join (preset Inlet to outlet) | An inlet tree (A) and an outlet tree (B) share the attractors: each attractor pulls the tree whose vein is nearer, so each tree takes the space nearest it. Each tree's free vein ends pull the nearest vein of the other tree, from up to 6 kill distances away, and the two join within the kill distance, so flow can pass from one to the other: the mutual tree attraction of Kinstlinger et al. (2020). Joins are spaced along the trees, as loops are: two joins less than 8 segments apart along both trees don't both form, so two veins running side by side don't join like the rungs of a ladder. The two trees' veins come edge to edge but never overlap, except where they join. Loops are off, as Join closes the network itself. |
+| Tip pull | How strongly free vein ends pull the other tree, 0–100 %. |
+| Trim dead ends | On by default. Leaves out the vein ends that never met the other tree, again and again, so every vein shown and exported carries flow from inlet to outlet. The view trims once growth pauses, so veins still meeting the other tree stay in view while it grows. |
+| Two or Three, Interweave (preset Two interwoven) | Each system has Count attractors of its own, drawn in turn from one even spread, so every system fills the shape. A step that would bring one system's vein nearer another system's than the Gap, edge to edge, with the veins' widths, is refused; it turns away and tries again, three more times, so veins pass round each other. On a flat sheet two veins that cross touch, so the gap is kept along each whole segment, not only at its points. Murray widths grow after a vein has passed another system's, so the view and exports narrow veins where two systems pass closer than the gap, over a few segments. When growth stops, an attractor nearer another system's vein than any of its own is in that system's space and is used up, so a shape the systems have filled ends as reached. |
+| Gap, Repel | The space kept between different systems' veins, edge to edge, in real units (0.63 mm on A4), and how strongly veins steer away from other systems as they grow, 0–100 %. |
+| Roots for each system | Default puts each system at its own end of the shape, or of every part of a drawing: A at the bottom or the left, B at the other end, C in the middle. Base and Centre put a root for each system side by side, far enough apart for their widest veins and the gap. Row takes turns along the bottom. Edge puts six roots for each system round the outline, taking turns, so the systems interweave all through the shape: a ring of many more grows short spokes side by side. In a drawing of many parts, every part gets each system. The A, B and C buttons above the sheet, or the A, B and C keys, pick which system the next root you add starts. Changing the number of systems places roots again when a button placed them; roots placed by hand keep their systems. A system with no root says so in the status. |
+| Colours | System A, B and C, and the joins, on the Style tab. Roots are drawn in their system's colour. |
+
+On a flat sheet, whichever system reaches an area first keeps the other out, so where the roots are decides how much the systems interweave: from the two ends of a shape they interweave where they meet, and from roots round the edge, taking turns, all through it.
 
 ### Attractors
 
@@ -133,16 +151,19 @@ Every placement gives exactly the count asked for, unless an edge clearance leav
 
 | Export | Contents | Units |
 | --- | --- | --- |
-| SVG | Groups `shape`, `veins`, `attractors`, `roots`, each only when shown. One path per vein between forks, with its stroke width, smoothed through its points (Catmull–Rom) unless Smooth curves is off. Where a curve would swing out of the shape or inside the edge clearance, as at a sharp loop join, that piece is drawn straight. No background. Very long veins are split at Illustrator's 32,000-point path limit. | mm, in, pt or px, as the sheet; in px the SVG is that many pixels, which other apps show at 96 per inch |
-| DXF | AutoCAD R12 text. Layers `VEINS` (centre-line polylines), `SHAPE`, `ATTRACTORS` and `ROOTS` (circles), each only when shown. y points up, as DXF expects. | mm, or in for inch sheets |
+| SVG | Groups `shape`, `veins`, `attractors`, `roots`, each only when shown. With two or three systems, `veins-a`, `veins-b` and `veins-c` (System A, B and C) and `joins` instead of `veins`, each in its own colour, so each system can be cut, plotted with its own pen or hidden on its own. One path per vein between forks, with its stroke width, smoothed through its points (Catmull–Rom) unless Smooth curves is off. Where a curve would swing out of the shape or inside the edge clearance, as at a sharp loop join, that piece is drawn straight. No background. Very long veins are split at Illustrator's 32,000-point path limit. | mm, in, pt or px, as the sheet; in px the SVG is that many pixels, which other apps show at 96 per inch |
+| DXF | AutoCAD R12 text. Layers `VEINS` (centre-line polylines), `SHAPE`, `ATTRACTORS` and `ROOTS` (circles), each only when shown; with two or three systems, `VEINS_A`, `VEINS_B`, `VEINS_C` and `JOINS` instead of `VEINS`. y points up, as DXF expects. | mm, or in for inch sheets |
 | PNG | The sheet at its pixels per inch, in its colours, optionally transparent. The file records its pixels per inch, so Illustrator, InDesign and Photoshop place it at real size. | px |
-| Project | Settings, the imported shape, roots, attractors and every vein point at full precision, as `.vessel.json` (schema `vessel-studio`, version 1). Growth carries on exactly where it stopped. | mm |
+| Project | Settings, the imported shape, roots, attractors and every vein point at full precision, as `.vessel.json` (schema `vessel-studio`). Growth carries on exactly where it stopped. A design of one system is version 1, as before, so older versions open it; one of two or three is version 2, which adds each root's and vein point's system and the joins between the trees, and which older versions say is from a newer version. | mm |
 
 ## Controls
 
 | Control | Effect |
 | --- | --- |
-| Count | Number of attractors, 100–20,000. |
+| Count | Number of attractors, 100–20,000. With interwoven systems, Count per system: each system has that many. |
+| Systems, How they grow | One, Two or Three systems, and for two, Join or Interweave; three always interweave. See [Systems](#systems). |
+| Tip pull, Trim dead ends | Join: how strongly free vein ends pull the other tree, and whether the dead ends are left out. |
+| Gap, Repel | Interweave: the space kept between systems' veins, and how strongly they steer apart. |
 | New pattern | A new pattern number: new attractors and a new wiggle. |
 | Segment length | Distance between neighbouring vein points. |
 | Kill distance | How close a vein must come to use up an attractor. Smaller makes denser, finer veins (Runions 2005, Fig. 9). Keep it at least the segment length. |
@@ -156,7 +177,7 @@ Every placement gives exactly the count asked for, unless an edge clearance leav
 | Speed | Steps per screen update, 1–40. |
 | Width | Murray's law (parent^n = sum of children^n, from the tip width at every end) or Even. |
 | Tip width, Max width, Murray exponent | Finest vein, a cap on the widest, in real units, and n from 1.5 to 4. Murray is 3, retinal arteries about 2.6, Runions' leaves 2. How wide veins get depends on how many ends they feed: Measurements shows the widest. |
-| Colours, Smooth curves | Vein and sheet colours, and curves or straight segments. |
+| Colours, Smooth curves | Vein (or each system's and the joins') and sheet colours, and curves or straight segments. |
 | Sheet | Preset, units (mm, in, pt, px), width, height, pixels per inch, margin, edge clearance. |
 
 ## Keyboard shortcuts
@@ -167,6 +188,7 @@ Every placement gives exactly the count asked for, unless an edge clearance leav
 | S | Grow one step |
 | R | Reset to the roots |
 | O, H | Roots and Pan tools |
+| A, B, C | With two or three systems: the system the next root starts |
 | Alt-click, or press and hold on a touch screen | Remove a root |
 | Scroll, pinch | Zoom |
 | +, −, F | Zoom in, out, fit |
@@ -189,7 +211,8 @@ These rules make it fast and repeatable:
 - **A cached nearest point.** Each attractor's nearest vein point is cached and updated with only the new points of each step. That is exact, because vein points never move, and ties go to the older point as a full search would.
 - **Grids for the shape.** Inside tests use bands of edges and crossing tests walk a grid of edges, so imported outlines with thousands of points stay fast. Outlines are sorted by position and swept, so only those whose boxes meet are tested for nesting, and the nearest edge to a point is found on the grid: a drawing of 968 outlines is read in 52 ms (26 s when every pair was tested), and 10,000 small letters with holes import in 1.9 s (32 s in 1.3.0).
 - **The same result every time.** Everything is seeded, and the project file holds the whole state, the random generator's included.
-- **A worker.** The engine runs off the page and sends one frame at a time, after the page has drawn the last one. Frames carry only new points.
+- **A worker.** The engine runs off the page and sends one frame at a time, after the page has drawn the last one. Frames carry only new points, with their systems.
+- **Systems.** With two or three, each attractor keeps a nearest point in each tree it feeds, and each point knows its system and, for the gap, the vein ends it feeds. The tests check that no two systems' veins come nearer than the gap along any segment, that Join's trees never cross and join only within the kill distance, that trimmed, every end left is a join and the inlet reaches the outlet, and that a run saved part way, joins and all, carries on exactly as an unbroken one.
 
 **An honest note on its limits:**
 - It is a picture-making model, not a physiological one: Murray widths come from the number of vein ends each vein feeds, not from a flow solve. On a loop, a join takes the thinner end's width.
@@ -207,6 +230,10 @@ Engine timings were measured in Node on this Mac (Apple silicon), best of 3 runs
 | Leaf with loops, A4, 4,500 | 74 ms | 269 | 12,984 | 295 ms | 1.10 ms | 913 |
 | Loops, A3, 20,000, 0.5 mm | 371 ms | 787 | 92,333 | 11,102 ms | 14.11 ms | 71 |
 | Capillary, A4, 5,000 | 82 ms | 140 | 17,949 | 1,240 ms | 8.86 ms | 113 |
+| Inlet to outlet, A4, 2,000 shared (52 joins) | 32 ms | 174 | 6,626 | 481 ms | 2.76 ms | 362 |
+| Two interwoven, A4, 3,000 a system | 99 ms | 149 | 12,750 | 754 ms | 5.06 ms | 198 |
+
+The two systems' rows were measured on 2026-11-25 the same way. One system is as fast as in 1.4.0: best of 5, the A4 Leaf grows in 66 ms (1.4.0: 64–66 ms), Leaf with loops in 286 ms (282–289 ms) and Capillary in 1,248 ms (1,240–1,245 ms).
 
 - **In the app** at the default Speed (3 steps a frame), growth is held to the screen: about 186 steps a second, so the A4 leaf takes 1.5 s. At Speed 40 the A3 leaf of 20,000 attractors took 2.06 s and 2.12 s in two runs, as fast as the engine alone.
 - **In a background tab** growth carries on at about half the speed: 182 steps in 6 s at Speed 1, about 30 a second, against 60 in front.
@@ -214,6 +241,8 @@ Engine timings were measured in Node on this Mac (Apple silicon), best of 3 runs
 - **Loops are slower:** each source tests up to 48 nearby vein points for its neighbourhood. A long kill distance with short segments costs most: kill 20 mm with 1 mm segments takes about 7 ms a step; the extreme of kill 37 mm with 0.05 mm segments takes 0.1 s a step at first and up to about 1 s as the veins fill in.
 - **Placing attractors** happens on the page, not in the worker. Even places 20,000 in about 0.4 s; Edge, which measures each point's distance to the outline, 1–1.5 s on Gil's test shapes.
 - **Sheets are 10 mm to 3 m a side.** Larger work is scaled to fit, and exports come out at that scale; the status says how much to enlarge them.
+- **Two systems on a flat sheet keep each other out.** Whichever reaches an area first holds it, so interwoven systems from the two ends of a shape interweave only where they meet; roots round the edge, taking turns, interweave them throughout. A few attractors can be left where no vein could grow, as with one system: 1 of 6,000 in Two interwoven on A4.
+- **Inlet and outlet go at the ends of the shape's box,** across its longer side. In a curled shape, such as a band that turns back on itself, drag them to the ends you want.
 - **Very thin frames read as lines.** Two nested outlines of one compound path less than 3 % of their size apart all the way round are read as one outlined stroke. A frame that thin can't hold veins anyway, and the status says when it happens.
 - **Veins reach the outline unless Edge clearance is set.** Without it, vein centre lines come as close as 0.002 mm to the outline, so a vein's stroke width can overlap a drawn line. The clearance is for centre lines: to keep a vein's whole stroke clear, set it to at least half the widest vein that runs near the edge.
 
@@ -238,7 +267,7 @@ npm run build     # type-check and build to dist/
 
 | Folder | What's in it |
 | --- | --- |
-| `src/veins/` | The engine, plain TypeScript: `engine.ts` (growth), `region.ts` (shapes, inside and crossing tests), `attractors.ts`, `network.ts` (widths, veins between forks, smoothing, counts), `strokes.ts` (outlined strokes read as lines), `shapes.ts`, `geometry.ts`, `random.ts`, with tests, including `parity.test.ts` against the old pages |
+| `src/veins/` | The engine, plain TypeScript: `engine.ts` (growth, with one, two or three systems), `region.ts` (shapes, inside and crossing tests), `attractors.ts`, `network.ts` (widths, veins between forks, smoothing, counts, trimming dead ends, narrowing where systems pass close), `strokes.ts` (outlined strokes read as lines), `shapes.ts`, `geometry.ts`, `random.ts`, with tests, including `parity.test.ts` against the old pages |
 | `src/worker/` | The growth worker and its frame protocol (`runner.ts`), with a test |
 | `src/lib/` | Settings and presets, the design, project files, SVG, DXF and PNG exports, SVG import (from Line Growth), units and the renderer |
 | `src/components/` | The panels, bars, stage, tooltips, dialogs and tabs, with tests of the slider, dialog and tooltip driven by pointer, touch and key events (happy-dom) |
@@ -252,6 +281,7 @@ npm run build     # type-check and build to dist/
 - The method is from Runions, Fuhrer, Lane, Federl, Rolland-Lagan and Prusinkiewicz (2005), *Modeling and visualization of leaf venation patterns*, and from Runions, Lane and Prusinkiewicz (2007), *Modeling trees with a space colonization algorithm*. It was rebuilt from the papers; no code was copied.
 - Jason Webb's 2D experiments (CC BY-NC-SA 4.0) were read for ideas only.
 - The SVG reader and some interface parts come from Gil's own Line Growth (MIT).
+- Join is the mutual tree attraction of Kinstlinger et al. (2020), *Generation of model tissues with dendritic vascular networks via sacrificial laser-sintered carbohydrate templates*, Nature Biomedical Engineering 4, 916–932. Join and Interweave follow Vessel Studio 3D's engine.
 - See [docs/research.md](docs/research.md) for every source and its license.
 
 ## License

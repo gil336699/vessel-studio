@@ -23,6 +23,7 @@ const SHORTCUTS: [string, string][] = [
   ['S', 'Grow one step'],
   ['R', 'Reset to the roots'],
   ['O  H', 'Roots and Pan tools'],
+  ['A  B  C', 'With two or three systems: the system the next root starts'],
   ['Alt + click', 'Remove a root (on touch: press and hold it)'],
   ['Space + drag', 'Pan with any tool'],
   ['Scroll, pinch', 'Zoom'],

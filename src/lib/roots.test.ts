@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { placeAttractors } from '../veins/attractors'
-import { Engine } from '../veins/engine'
-import { pointInRing, rectRing, signedArea, type Ring, type Vec } from '../veins/geometry'
+import { Engine, type Root } from '../veins/engine'
+import { pointInRing, rectRing, signedArea, type Ring } from '../veins/geometry'
 import { Region } from '../veins/region'
 import { freshDesign, MAX_PART_ROOTS, planChange, regionOf, startRoots, unrootedParts, type Imported } from './design'
 import { shapeFromDrawing } from './importShape'
@@ -151,7 +151,7 @@ describe('roots in every part of a shape', () => {
 
 describe('roots that follow the shape', () => {
   // The part a point is in: the smallest outline round it.
-  const owner = (region: ReturnType<typeof regionOf>, [x, y]: Vec) => {
+  const owner = (region: ReturnType<typeof regionOf>, [x, y]: Root) => {
     const smallestFirst = [...region.parts()].sort((a, b) => Math.abs(signedArea(a)) - Math.abs(signedArea(b)))
     return smallestFirst.findIndex(r => pointInRing(r, x, y))
   }
@@ -166,7 +166,7 @@ describe('roots that follow the shape', () => {
     // Roots placed by hand are only moved in as needed, each within the letter it was in: none lands in another
     // letter, though a letter too thin for the clearance loses its root.
     const hand = planChange({ ...d, rootsBy: undefined }, { clearance: 6 }, im, null).next
-    const count = (roots: Vec[], r: ReturnType<typeof regionOf>) => { const n = new Map<number, number>(); for (const p of roots) n.set(owner(r, p), (n.get(owner(r, p)) ?? 0) + 1); return n }
+    const count = (roots: Root[], r: ReturnType<typeof regionOf>) => { const n = new Map<number, number>(); for (const p of roots) n.set(owner(r, p), (n.get(owner(r, p)) ?? 0) + 1); return n }
     const before = count(d.roots, regionOf(s, im)), after = count(hand.roots, region)
     for (const [k, n] of after) expect(n).toBeLessThanOrEqual(before.get(k) ?? 0)
   })

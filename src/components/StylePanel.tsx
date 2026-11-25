@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { LIMITS, type Settings } from '../lib/settings'
+import { joining, LIMITS, SYSTEM_NAMES, type Settings } from '../lib/settings'
 import { decimals, toUnits, UNIT_LABEL } from '../lib/units'
 import type { WidthRule } from '../veins/network'
 import { ColorField, RangeField, Section, Segmented, SliderField, SwitchField, type Option } from './Controls'
@@ -27,7 +27,11 @@ export const StylePanel = memo(function StylePanel({ s, change }: { s: Settings;
       </>}
     </Section>
     <Section title="Colour">
-      <ColorField label="Veins" value={s.veinColor} tip="Colour of the veins, in the view and every export." onChange={veinColor => change({ veinColor }, 'veinColor')} />
+      {s.systems > 1
+        ? (['veinColor', 'veinColorB', 'veinColorC'] as const).slice(0, s.systems).map((key, t) => <ColorField key={key} label={`System ${SYSTEM_NAMES[t]}`} value={s[key]}
+          tip={`Colour of system ${SYSTEM_NAMES[t]}’s veins and roots, in the view and every export.`} onChange={v => change({ [key]: v }, key)} />)
+        : <ColorField label="Veins" value={s.veinColor} tip="Colour of the veins, in the view and every export." onChange={veinColor => change({ veinColor }, 'veinColor')} />}
+      {joining(s) && <ColorField label="Joins" value={s.linkColor} tip="Colour of the joins where the two trees met, in the view and every export." onChange={linkColor => change({ linkColor }, 'linkColor')} />}
       <ColorField label="Background" value={s.background} tip="The sheet’s colour in the view and the PNG; SVG and DXF leave it out." onChange={background => change({ background }, 'background')} />
     </Section>
     <Section title="Curves">
