@@ -13,9 +13,9 @@ It rebuilds Gil's older space colonization pages (Vessel Lab, Basic, BioVessel P
 
 **Use it online:** https://gil336699.github.io/vessel-studio/
 
-![Vessel Studio in use: the Leaf preset grows open veins from the base of a leaf, main veins first; Leaf with loops joins them into a fine net; an Illustrator SVG of the word "Arbore" is dropped in, and every letter grows from its own root; Gil's shape, a rounded triangle with a window drawn as outlined strokes, is dropped in and its strokes are read as lines; Edge clearance is set to 12 pt and the veins grow clear of the drawn lines, seen close up; and the design is exported as an SVG at real size.](docs/demo.gif)
+![Vessel Studio in use: the Leaf preset grows open veins from the base of a leaf, main veins first; Inlet to outlet grows a red inlet tree from the bottom of an ellipse and a purple outlet tree from the top, which meet and join in 52 places, and the dead ends are trimmed when growth stops; Two interwoven grows red and purple systems from 12 roots round the edge, woven through each other 0.63 mm apart; Leaf with loops joins veins into a fine net; an Illustrator SVG of the word "Arbore" is dropped in, and every letter grows from its own root; Gil's shape, a rounded triangle with a window drawn as outlined strokes, is dropped in and its strokes are read as lines; Edge clearance is set to 12 pt and the veins grow clear of the drawn lines, seen close up; and the design is exported as an SVG at real size.](docs/demo.gif)
 
-[Watch the demo as a video](https://github.com/gil336699/vessel-studio/releases/download/v1.4.0/vessel-studio-demo.mp4) (MP4, 1920 × 1080, 28 seconds).
+[Watch the demo as a video](https://github.com/gil336699/vessel-studio/releases/download/v1.5.0/vessel-studio-demo.mp4) (MP4, 1920 × 1080, 30 seconds).
 
 ![The eight presets, grown by the app's engine on A4: Leaf, open veins from the base with a midrib; Leaf with loops, a fine closed net; Tree, a trunk branching into its crown; Arterial, long smooth vessels from the centre; Neural, fine wandering branches; Capillary, a dense bed of small loops; Inlet to outlet, a red inlet tree from the bottom and a purple outlet tree from the top that join in the middle; Two interwoven, red and purple systems from roots round the edge, woven through each other without touching.](docs/presets.png)
 
